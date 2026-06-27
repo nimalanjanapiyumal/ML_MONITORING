@@ -93,9 +93,12 @@ services:
     environment:
       PROMETHEUS_URL: http://prometheus:9090
       CONFIG_PATH: /app/config.yaml
+      UNSW_MODEL_PATH: /app/models/unsw_nb15_model.joblib
+      UNSW_DATA_DIR: /Data/UNSW-NB15 dataset/CSV Files/Training and Testing Sets
     volumes:
       - ./ml-anomaly/config.yaml:/app/config.yaml:ro
-      - ./sample-data:/app/sample-data:ro
+      - ./ml-anomaly/models:/app/models:ro
+      - ./Data:/Data:ro
     ports:
       - "8000:8000"
     depends_on:

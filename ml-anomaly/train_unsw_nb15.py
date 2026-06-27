@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
 
 from unsw_nb15_pipeline import train_from_csv
@@ -17,10 +18,25 @@ DEFAULT_DATA_DIR = (
 DEFAULT_OUTPUT_DIR = Path(__file__).resolve().parent / "models"
 
 
+def env_path(name: str, fallback: Path) -> Path:
+    value = os.getenv(name)
+    return Path(value) if value else fallback
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train the UNSW-NB15 intrusion detection ML pipeline.")
-    parser.add_argument("--data-dir", type=Path, default=DEFAULT_DATA_DIR, help="Folder containing prepared UNSW train/test CSVs.")
-    parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR, help="Folder for the saved model and metrics.")
+    parser.add_argument(
+        "--data-dir",
+        type=Path,
+        default=env_path("UNSW_DATA_DIR", DEFAULT_DATA_DIR),
+        help="Folder containing prepared UNSW train/test CSVs.",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=env_path("UNSW_OUTPUT_DIR", DEFAULT_OUTPUT_DIR),
+        help="Folder for the saved model and metrics.",
+    )
     parser.add_argument(
         "--model",
         choices=["random_forest", "xgboost"],
