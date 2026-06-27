@@ -1,0 +1,183 @@
+services:
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: nhmf-prometheus
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=15d"
+      - "--web.enable-lifecycle"
+    volumes:
+      - ./configs/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./configs/prometheus/alert_rules.yml:/etc/prometheus/alert_rules.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - monitoring
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: nhmf-alertmanager
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
+    volumes:
+      - ./configs/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager-data:/alertmanager
+    ports:
+      - "9093:9093"
+    networks:
+      - monitoring
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: nhmf-grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      GF_INSTALL_PLUGINS: alexanderzobnin-zabbix-app
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./configs/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./configs/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    networks:
+      - monitoring
+
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    container_name: nhmf-node-exporter
+    restart: unless-stopped
+    command:
+      - "--path.rootfs=/host"
+    pid: host
+    volumes:
+      - "/:/host:ro,rslave"
+    ports:
+      - "9100:9100"
+    networks:
+      - monitoring
+
+  blackbox-exporter:
+    image: prom/blackbox-exporter:v0.25.0
+    container_name: nhmf-blackbox-exporter
+    restart: unless-stopped
+    volumes:
+      - ./configs/blackbox/blackbox.yml:/etc/blackbox_exporter/config.yml:ro
+    ports:
+      - "9115:9115"
+    networks:
+      - monitoring
+
+  pushgateway:
+    image: prom/pushgateway:v1.9.0
+    container_name: nhmf-pushgateway
+    restart: unless-stopped
+    ports:
+      - "9091:9091"
+    networks:
+      - monitoring
+
+  ml-anomaly:
+    build:
+      context: ./ml-anomaly
+    container_name: nhmf-ml-anomaly
+    restart: unless-stopped
+    environment:
+      PROMETHEUS_URL: http://prometheus:9090
+      CONFIG_PATH: /app/config.yaml
+    volumes:
+      - ./ml-anomaly/config.yaml:/app/config.yaml:ro
+      - ./sample-data:/app/sample-data:ro
+    ports:
+      - "8000:8000"
+    depends_on:
+      - prometheus
+      - node-exporter
+      - blackbox-exporter
+    networks:
+      - monitoring
+
+  zabbix-db:
+    image: mysql:8.0
+    container_name: nhmf-zabbix-db
+    restart: unless-stopped
+    command:
+      - "--character-set-server=utf8mb4"
+      - "--collation-server=utf8mb4_bin"
+      - "--default-authentication-plugin=mysql_native_password"
+    environment:
+      MYSQL_DATABASE: ${ZABBIX_DB_NAME}
+      MYSQL_USER: ${ZABBIX_DB_USER}
+      MYSQL_PASSWORD: ${ZABBIX_DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${ZABBIX_DB_ROOT_PASSWORD}
+    volumes:
+      - zabbix-db-data:/var/lib/mysql
+    networks:
+      - monitoring
+
+  zabbix-server:
+    image: zabbix/zabbix-server-mysql:alpine-7.0-latest
+    container_name: nhmf-zabbix-server
+    restart: unless-stopped
+    environment:
+      DB_SERVER_HOST: zabbix-db
+      MYSQL_DATABASE: ${ZABBIX_DB_NAME}
+      MYSQL_USER: ${ZABBIX_DB_USER}
+      MYSQL_PASSWORD: ${ZABBIX_DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${ZABBIX_DB_ROOT_PASSWORD}
+    depends_on:
+      - zabbix-db
+    ports:
+      - "10051:10051"
+    networks:
+      - monitoring
+
+  zabbix-web:
+    image: zabbix/zabbix-web-nginx-mysql:alpine-7.0-latest
+    container_name: nhmf-zabbix-web
+    restart: unless-stopped
+    environment:
+      ZBX_SERVER_HOST: zabbix-server
+      DB_SERVER_HOST: zabbix-db
+      MYSQL_DATABASE: ${ZABBIX_DB_NAME}
+      MYSQL_USER: ${ZABBIX_DB_USER}
+      MYSQL_PASSWORD: ${ZABBIX_DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${ZABBIX_DB_ROOT_PASSWORD}
+      PHP_TZ: Asia/Colombo
+    depends_on:
+      - zabbix-server
+      - zabbix-db
+    ports:
+      - "8080:8080"
+    networks:
+      - monitoring
+
+  zabbix-agent:
+    image: zabbix/zabbix-agent:alpine-7.0-latest
+    container_name: nhmf-zabbix-agent
+    restart: unless-stopped
+    environment:
+      ZBX_SERVER_HOST: zabbix-server
+      ZBX_HOSTNAME: docker-monitoring-host
+    depends_on:
+      - zabbix-server
+    networks:
+      - monitoring
+
+volumes:
+  prometheus-data:
+  alertmanager-data:
+  grafana-data:
+  zabbix-db-data:
+
+networks:
+  monitoring:
+    driver: bridge

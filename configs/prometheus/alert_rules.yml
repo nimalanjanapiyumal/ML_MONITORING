@@ -1,0 +1,72 @@
+groups:
+  - name: network-health-baseline-alerts
+    rules:
+      - alert: TargetDown
+        expr: up == 0
+        for: 2m
+        labels:
+          severity: critical
+          category: availability
+        annotations:
+          summary: "Monitoring target is down"
+          description: "Target {{ $labels.instance }} in job {{ $labels.job }} has been unreachable for more than 2 minutes."
+
+      - alert: HighICMPLatency
+        expr: avg_over_time(probe_duration_seconds{job="blackbox-icmp"}[2m]) > 0.20
+        for: 2m
+        labels:
+          severity: warning
+          category: latency
+        annotations:
+          summary: "High ICMP latency detected"
+          description: "Target {{ $labels.target }} has average ICMP probe duration above 200ms."
+
+      - alert: HTTPProbeFailed
+        expr: probe_success{job="blackbox-http"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          category: service
+        annotations:
+          summary: "HTTP health probe failed"
+          description: "HTTP probe failed for {{ $labels.target }}."
+
+      - alert: HighCPUUsage
+        expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[2m])) * 100) > 85
+        for: 3m
+        labels:
+          severity: warning
+          category: resource
+        annotations:
+          summary: "High CPU usage"
+          description: "CPU usage on {{ $labels.instance }} is above 85% for more than 3 minutes."
+
+      - alert: HighMemoryUsage
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 85
+        for: 3m
+        labels:
+          severity: warning
+          category: resource
+        annotations:
+          summary: "High memory usage"
+          description: "Memory usage on {{ $labels.instance }} is above 85% for more than 3 minutes."
+
+      - alert: HighDiskUsage
+        expr: (1 - (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay|squashfs"})) * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+          category: resource
+        annotations:
+          summary: "High disk usage"
+          description: "Disk usage on {{ $labels.instance }} {{ $labels.mountpoint }} is above 85%."
+
+      - alert: MLAnomalyDetected
+        expr: nhmf_anomaly_flag == 1
+        for: 1m
+        labels:
+          severity: warning
+          category: ml-anomaly
+        annotations:
+          summary: "ML anomaly detected"
+          description: "ML anomaly detector flagged metric {{ $labels.metric_name }} for {{ $labels.target }}. Score={{ $value }}."

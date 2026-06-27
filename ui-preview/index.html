@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Network Health Monitoring - UI Preview</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">NHMF Lab Preview</p>
+          <h1>Network Health Monitoring</h1>
+        </div>
+        <div class="topbar-actions" aria-label="Service links">
+          <button class="icon-button" title="Prometheus" aria-label="Prometheus">P</button>
+          <button class="icon-button" title="Alertmanager" aria-label="Alertmanager">A</button>
+          <button class="icon-button" title="ML API" aria-label="ML API">ML</button>
+        </div>
+      </header>
+
+      <section class="toolbar" aria-label="Dashboard filters">
+        <label>
+          Job
+          <select>
+            <option>All jobs</option>
+            <option>blackbox-icmp</option>
+            <option>node-exporter</option>
+            <option>ml-anomaly</option>
+          </select>
+        </label>
+        <label>
+          Instance
+          <select>
+            <option>All instances</option>
+            <option>node-exporter:9100</option>
+            <option>ml-anomaly:8000</option>
+            <option>prometheus:9090</option>
+          </select>
+        </label>
+        <label>
+          Range
+          <select>
+            <option>Last 1 hour</option>
+            <option>Last 6 hours</option>
+            <option>Last 24 hours</option>
+          </select>
+        </label>
+        <span class="live-pill">Refresh 10s</span>
+      </section>
+
+      <section class="summary-grid" aria-label="Operational overview">
+        <article class="metric-tile healthy">
+          <span>Healthy Targets</span>
+          <strong>8</strong>
+          <small>All core services responding</small>
+        </article>
+        <article class="metric-tile danger">
+          <span>Unavailable Targets</span>
+          <strong>0</strong>
+          <small>No down targets</small>
+        </article>
+        <article class="metric-tile success">
+          <span>ML Model State</span>
+          <strong>Trained</strong>
+          <small>Latest scoring cycle completed</small>
+        </article>
+        <article class="metric-tile warning">
+          <span>Active Alerts</span>
+          <strong>1</strong>
+          <small>Warning severity</small>
+        </article>
+        <article class="metric-tile neutral">
+          <span>ML Run Age</span>
+          <strong>24s</strong>
+          <small>Within expected window</small>
+        </article>
+        <article class="metric-tile anomaly">
+          <span>Peak Anomaly Score</span>
+          <strong>0.72</strong>
+          <small>Memory usage spike</small>
+        </article>
+      </section>
+
+      <section class="section-heading">
+        <h2>Reachability and Service Health</h2>
+      </section>
+      <section class="panel-grid two-col">
+        <article class="panel">
+          <div class="panel-header">
+            <h3>ICMP Probe Duration</h3>
+            <span class="unit">seconds</span>
+          </div>
+          <canvas id="latencyChart" height="210"></canvas>
+        </article>
+        <article class="panel">
+          <div class="panel-header">
+            <h3>Probe Success Timeline</h3>
+            <span class="status-dot ok">OK</span>
+          </div>
+          <div class="timeline" aria-label="Probe success timeline">
+            <div><span>8.8.8.8</span><i style="--good: 96%"></i></div>
+            <div><span>1.1.1.1</span><i style="--good: 100%"></i></div>
+            <div><span>Prometheus</span><i style="--good: 100%"></i></div>
+            <div><span>Grafana</span><i style="--good: 92%"></i></div>
+            <div><span>ML API</span><i style="--good: 98%"></i></div>
+          </div>
+        </article>
+      </section>
+
+      <section class="section-heading">
+        <h2>Host Resource Baseline</h2>
+      </section>
+      <section class="panel-grid three-col">
+        <article class="panel">
+          <div class="panel-header">
+            <h3>CPU Usage</h3>
+            <span class="unit">percent</span>
+          </div>
+          <canvas id="cpuChart" height="190"></canvas>
+        </article>
+        <article class="panel">
+          <div class="panel-header">
+            <h3>Memory Usage</h3>
+            <span class="unit">percent</span>
+          </div>
+          <canvas id="memoryChart" height="190"></canvas>
+        </article>
+        <article class="panel">
+          <div class="panel-header">
+            <h3>Disk Usage</h3>
+            <span class="unit">percent</span>
+          </div>
+          <canvas id="diskChart" height="190"></canvas>
+        </article>
+        <article class="panel wide">
+          <div class="panel-header">
+            <h3>Network Throughput</h3>
+            <span class="unit">bytes/sec</span>
+          </div>
+          <canvas id="networkChart" height="210"></canvas>
+        </article>
+      </section>
+
+      <section class="section-heading">
+        <h2>ML Anomaly Detection</h2>
+      </section>
+      <section class="panel-grid anomaly-layout">
+        <article class="metric-tile danger compact">
+          <span>Current ML Flags</span>
+          <strong>1</strong>
+          <small>Investigate correlated metric</small>
+        </article>
+        <article class="gauge-panel panel">
+          <div class="panel-header">
+            <h3>Peak Anomaly Score</h3>
+            <span class="unit">0-1</span>
+          </div>
+          <div class="gauge" style="--score: 72">
+            <div class="gauge-value">0.72</div>
+          </div>
+        </article>
+        <article class="panel anomaly-trend">
+          <div class="panel-header">
+            <h3>Anomaly Score Trend</h3>
+            <span class="status-dot warn">Elevated</span>
+          </div>
+          <canvas id="anomalyChart" height="210"></canvas>
+        </article>
+      </section>
+
+      <section class="section-heading">
+        <h2>Alerts and Evidence Tables</h2>
+      </section>
+      <section class="panel-grid two-col">
+        <article class="panel table-panel">
+          <div class="panel-header">
+            <h3>Firing Alerts</h3>
+            <span class="status-dot warn">1 firing</span>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>Alert</th>
+                <th>Severity</th>
+                <th>Target</th>
+                <th>State</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>MLAnomalyDetected</td>
+                <td><span class="tag warn">warning</span></td>
+                <td>memory_usage_percent</td>
+                <td>firing</td>
+              </tr>
+              <tr>
+                <td>HighCPUUsage</td>
+                <td><span class="tag muted">normal</span></td>
+                <td>node-exporter</td>
+                <td>inactive</td>
+              </tr>
+            </tbody>
+          </table>
+        </article>
+        <article class="panel table-panel">
+          <div class="panel-header">
+            <h3>Target Status</h3>
+            <span class="status-dot ok">8 up</span>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>Job</th>
+                <th>Instance</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>prometheus</td>
+                <td>prometheus:9090</td>
+                <td><span class="tag ok">up</span></td>
+              </tr>
+              <tr>
+                <td>grafana</td>
+                <td>grafana:3000</td>
+                <td><span class="tag ok">up</span></td>
+              </tr>
+              <tr>
+                <td>ml-anomaly</td>
+                <td>ml-anomaly:8000</td>
+                <td><span class="tag ok">up</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </article>
+      </section>
+    </main>
+    <script src="./app.js"></script>
+  </body>
+</html>

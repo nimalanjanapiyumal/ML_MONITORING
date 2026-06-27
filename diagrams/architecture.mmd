@@ -1,0 +1,13 @@
+flowchart LR
+    A[Telemetry Sources<br/>Linux Hosts<br/>Network Devices<br/>HTTP/ICMP Targets] --> B[Exporters<br/>Node Exporter<br/>Blackbox Exporter<br/>SNMP Exporter]
+    A --> C[Zabbix Agent / Proxy]
+    B --> D[Prometheus TSDB]
+    C --> E[Zabbix Server]
+    D --> F[Python ML Anomaly API<br/>Feature Engineering<br/>Isolation Forest / LOF / OCSVM]
+    F --> D
+    D --> G[Alertmanager<br/>Grouping Routing Silencing]
+    D --> H[Grafana Dashboards]
+    E --> H
+    F --> H
+    G --> H
+    H --> I[Evaluation Layer<br/>KPIs<br/>TTD<br/>Alert Noise<br/>Dashboard Response]

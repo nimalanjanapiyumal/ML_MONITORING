@@ -1,0 +1,26 @@
+normal_attack,attack_type,severity,anomaly_score,action,binary_attack_probability
+Attack,Fuzzers,Medium,0.3618,"Investigate the source, destination, and related recent events.",0.5276
+Attack,Fuzzers,Medium,0.4756,"Investigate the source, destination, and related recent events.",0.9457
+Attack,Fuzzers,Medium,0.4357,"Investigate the source, destination, and related recent events.",0.6447
+Attack,Fuzzers,Medium,0.3779,"Investigate the source, destination, and related recent events.",0.92
+Attack,Fuzzers,Medium,0.4712,"Investigate the source, destination, and related recent events.",0.5948
+Attack,Fuzzers,Medium,0.484,"Investigate the source, destination, and related recent events.",0.6801
+Attack,Fuzzers,Medium,0.4892,"Investigate the source, destination, and related recent events.",0.6928
+Attack,Fuzzers,Medium,0.3975,"Investigate the source, destination, and related recent events.",0.77
+Normal,Normal,Normal,0.3772,Allow and continue monitoring.,0.0001
+Normal,Normal,Normal,0.3825,Allow and continue monitoring.,0.0001
+Normal,Normal,Normal,0.3772,Allow and continue monitoring.,0.0001
+Normal,Normal,Normal,0.3825,Allow and continue monitoring.,0.0001
+Attack,Fuzzers,Medium,0.4893,"Investigate the source, destination, and related recent events.",0.9123
+Attack,Fuzzers,Medium,0.4948,"Investigate the source, destination, and related recent events.",0.5729
+Attack,DoS,Critical,0.495,"Escalate immediately, block the source if policy allows, and start incident response.",0.97
+Attack,Fuzzers,Medium,0.4793,"Investigate the source, destination, and related recent events.",0.817
+Attack,Fuzzers,Medium,0.4153,"Investigate the source, destination, and related recent events.",0.9872
+Normal,Normal,Normal,0.4817,Allow and continue monitoring.,0.1206
+Attack,Fuzzers,Medium,0.5483,"Investigate the source, destination, and related recent events.",0.66
+Attack,Fuzzers,Medium,0.534,"Investigate the source, destination, and related recent events.",0.8368
+Normal,Normal,Normal,0.4817,Allow and continue monitoring.,0.27
+Attack,Shellcode,Critical,0.3438,"Escalate immediately, block the source if policy allows, and start incident response.",0.98
+Attack,Fuzzers,Medium,0.4111,"Investigate the source, destination, and related recent events.",0.84
+Attack,Fuzzers,Medium,0.4975,"Investigate the source, destination, and related recent events.",0.9141
+Attack,Fuzzers,Medium,0.4009,"Investigate the source, destination, and related recent events.",0.7826

@@ -1,0 +1,27 @@
+prometheus:
+  url: "http://prometheus:9090"
+  lookback_minutes: 60
+  step_seconds: 30
+  query_timeout_seconds: 10
+
+model:
+  algorithm: "isolation_forest"
+  contamination: 0.08
+  random_state: 42
+  min_points: 30
+  anomaly_threshold: 0.65
+
+metrics:
+  - name: "icmp_probe_duration"
+    query: "probe_duration_seconds{job=\"blackbox-icmp\"}"
+    target_label: "target"
+  - name: "cpu_usage_percent"
+    query: "100 - (avg by(instance) (rate(node_cpu_seconds_total{mode=\"idle\"}[2m])) * 100)"
+    target_label: "instance"
+  - name: "memory_usage_percent"
+    query: "(1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100"
+    target_label: "instance"
+
+runtime:
+  refresh_seconds: 30
+  demo_mode_if_prometheus_unavailable: true
