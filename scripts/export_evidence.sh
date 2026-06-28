@@ -18,8 +18,8 @@ curl -fsS "http://localhost:9090/api/v1/alerts" | python3 -m json.tool > "$OUT/p
 curl -fsS "http://localhost:9093/api/v2/alerts" | python3 -m json.tool > "$OUT/alertmanager_alerts.json" || true
 curl -fsS "http://localhost:8000/results" | python3 -m json.tool > "$OUT/ml_results.json" || true
 
-for c in nhmf-prometheus nhmf-alertmanager nhmf-grafana nhmf-ml-anomaly nhmf-blackbox-exporter nhmf-node-exporter; do
-  docker logs "$c" --tail 200 > "$OUT/${c}_logs.txt" 2>&1 || true
+for service in prometheus alertmanager grafana ml-anomaly blackbox-exporter node-exporter; do
+  docker compose logs --no-color --tail 200 "$service" > "$OUT/${service}_logs.txt" 2>&1 || true
 done
 
 echo "Evidence export completed: $OUT"
