@@ -84,6 +84,8 @@ If your Docker build cannot resolve PyPI during `pip install`, Linux setup defau
 DOCKER_BUILD_NETWORK=default bash run.sh
 ```
 
+Grafana starts with the Prometheus dashboard by default. The Zabbix Grafana plugin is optional because it requires internet access from inside the Grafana container; enable it by setting `GRAFANA_INSTALL_PLUGINS=alexanderzobnin-zabbix-app` in `.env`.
+
 ### 3. Access Services
 
 | Service | URL | Default Login |
@@ -94,7 +96,12 @@ DOCKER_BUILD_NETWORK=default bash run.sh
 | ML Anomaly API | http://localhost:8000 | No login |
 | Zabbix Web UI | http://localhost:8080 | Admin / zabbix |
 
-Grafana dashboard path: Dashboards > NHMF > Network Health Monitoring - Hybrid Operations Dashboard.
+Grafana dashboard paths:
+
+- Dashboards > NHMF > Network Health Monitoring - Hybrid Operations Dashboard
+- Dashboards > NHMF > ML Anomaly Detection Dashboard
+
+Direct ML dashboard URL: http://localhost:3000/d/nhmf-ml/ml-anomaly-detection-dashboard
 
 ### 4. Validate the Stack
 

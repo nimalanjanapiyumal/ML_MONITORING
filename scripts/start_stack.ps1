@@ -101,6 +101,33 @@ function Ensure-UnswModel {
     }
 }
 
+function Test-Url {
+    param(
+        [string]$Name,
+        [string]$Url,
+        [int]$TimeoutSeconds = 90,
+        [string]$ServiceName = $Name
+    )
+
+    Write-Host "Waiting for $Name at $Url " -NoNewline
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    while ((Get-Date) -lt $deadline) {
+        try {
+            $response = Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec 5
+            if ($response.StatusCode -ge 200 -and $response.StatusCode -lt 500) {
+                Write-Host " OK"
+                return
+            }
+        } catch {
+            Start-Sleep -Seconds 3
+            Write-Host "." -NoNewline
+        }
+    }
+
+    Write-Host " FAILED"
+    Write-Host "  Check logs: docker compose logs --tail 120 $ServiceName"
+}
+
 Require-Command docker
 docker compose version | Out-Null
 docker info | Out-Null
@@ -114,8 +141,18 @@ Write-Host "Starting Network Health Monitoring Framework..."
 docker compose up -d --build
 
 Write-Host ""
+docker compose ps
+
+Write-Host ""
+Test-Url -Name "Prometheus" -Url "http://localhost:9090/-/healthy" -TimeoutSeconds 60 -ServiceName "prometheus"
+Test-Url -Name "Grafana" -Url "http://localhost:3000/api/health" -TimeoutSeconds 120 -ServiceName "grafana"
+Test-Url -Name "ML anomaly API" -Url "http://localhost:8000/health" -TimeoutSeconds 90 -ServiceName "ml-anomaly"
+Test-Url -Name "Zabbix Web" -Url "http://localhost:8080" -TimeoutSeconds 180 -ServiceName "zabbix-web"
+
+Write-Host ""
 Write-Host "Services:"
 Write-Host "Grafana:       http://localhost:3000  admin/admin123"
+Write-Host "ML Dashboard:  http://localhost:3000/d/nhmf-ml/ml-anomaly-detection-dashboard"
 Write-Host "Prometheus:    http://localhost:9090"
 Write-Host "Alertmanager:  http://localhost:9093"
 Write-Host "ML API:        http://localhost:8000/health"

@@ -55,6 +55,18 @@
       "tooltip": "Open ML anomaly API",
       "type": "link",
       "url": "http://localhost:8000/health"
+    },
+    {
+      "asDropdown": false,
+      "icon": "dashboard",
+      "includeVars": false,
+      "keepTime": true,
+      "tags": [],
+      "targetBlank": false,
+      "title": "ML Dashboard",
+      "tooltip": "Open dedicated ML anomaly detection dashboard",
+      "type": "link",
+      "url": "/d/nhmf-ml/ml-anomaly-detection-dashboard"
     }
   ],
   "liveNow": false,
@@ -1587,6 +1599,6 @@
   "timezone": "browser",
   "title": "Network Health Monitoring - Hybrid Operations Dashboard",
   "uid": "nhmf-main",
-  "version": 2,
+  "version": 3,
   "weekStart": ""
 }

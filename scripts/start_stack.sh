@@ -119,6 +119,32 @@ ensure_unsw_model() {
   fi
 }
 
+check_url() {
+  local name="$1"
+  local url="$2"
+  local timeout_seconds="${3:-90}"
+  local service_name="${4:-$1}"
+
+  if ! command -v curl >/dev/null 2>&1; then
+    echo "$name: skipped health check because curl is not installed."
+    return
+  fi
+
+  echo -n "Waiting for $name at $url "
+  local elapsed=0
+  until curl -fsS "$url" >/dev/null 2>&1; do
+    if (( elapsed >= timeout_seconds )); then
+      echo "FAILED"
+      echo "  Check logs: docker compose logs --tail 120 $service_name"
+      return
+    fi
+    echo -n "."
+    sleep 3
+    elapsed=$((elapsed + 3))
+  done
+  echo " OK"
+}
+
 require_command docker
 docker compose version >/dev/null
 docker info >/dev/null
@@ -132,8 +158,18 @@ echo "Starting Network Health Monitoring Framework..."
 docker compose up -d --build
 
 echo ""
+docker compose ps
+
+echo ""
+check_url "Prometheus" "http://localhost:9090/-/healthy" 60 "prometheus"
+check_url "Grafana" "http://localhost:3000/api/health" 120 "grafana"
+check_url "ML anomaly API" "http://localhost:8000/health" 90 "ml-anomaly"
+check_url "Zabbix Web" "http://localhost:8080" 180 "zabbix-web"
+
+echo ""
 echo "Services:"
 echo "Grafana:       http://localhost:3000  admin/admin123"
+echo "ML Dashboard:  http://localhost:3000/d/nhmf-ml/ml-anomaly-detection-dashboard"
 echo "Prometheus:    http://localhost:9090"
 echo "Alertmanager:  http://localhost:9093"
 echo "ML API:        http://localhost:8000/health"
