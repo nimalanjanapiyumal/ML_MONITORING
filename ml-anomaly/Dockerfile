@@ -2,8 +2,12 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+ARG PIP_RETRIES=10
+ARG PIP_TIMEOUT=120
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1
+
 COPY requirements.txt /app/requirements.txt
-RUN pip install --no-cache-dir -r /app/requirements.txt
+RUN python -m pip install --no-cache-dir --retries "$PIP_RETRIES" --timeout "$PIP_TIMEOUT" -r /app/requirements.txt
 
 COPY app.py /app/app.py
 COPY anomaly_detector.py /app/anomaly_detector.py

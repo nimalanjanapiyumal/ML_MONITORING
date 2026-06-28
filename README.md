@@ -57,11 +57,31 @@ chmod +x scripts/install_docker_ubuntu.sh
 
 Log out and log back in after installation if Docker group membership is updated.
 
-### 2. Start the Monitoring Stack
+### 2. Start Everything With One Command
 
 ```bash
-chmod +x scripts/start_stack.sh
-./scripts/start_stack.sh
+bash run.sh
+```
+
+This command creates `.env` from `.env.example` when needed, removes stale legacy `nhmf-*` containers, trains the UNSW-NB15 model if the model bundle is missing, builds the ML API image, and starts the full Docker Compose stack.
+
+On Windows PowerShell, run:
+
+```powershell
+.\run.ps1
+```
+
+Useful options:
+
+```bash
+bash run.sh --retrain
+bash run.sh --skip-train
+```
+
+If your Docker build cannot resolve PyPI during `pip install`, Linux setup defaults the ML image build to host networking. You can override it:
+
+```bash
+DOCKER_BUILD_NETWORK=default bash run.sh
 ```
 
 ### 3. Access Services

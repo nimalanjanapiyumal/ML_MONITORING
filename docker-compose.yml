@@ -82,6 +82,10 @@ services:
   ml-anomaly:
     build:
       context: ./ml-anomaly
+      network: ${DOCKER_BUILD_NETWORK:-default}
+      args:
+        PIP_RETRIES: ${PIP_RETRIES:-10}
+        PIP_TIMEOUT: ${PIP_TIMEOUT:-120}
     restart: unless-stopped
     environment:
       PROMETHEUS_URL: http://prometheus:9090
@@ -90,7 +94,7 @@ services:
       UNSW_DATA_DIR: /Data/UNSW-NB15 dataset/CSV Files/Training and Testing Sets
     volumes:
       - ./ml-anomaly/config.yaml:/app/config.yaml:ro
-      - ./ml-anomaly/models:/app/models:ro
+      - ./ml-anomaly/models:/app/models
       - ./Data:/Data:ro
     ports:
       - "8000:8000"
