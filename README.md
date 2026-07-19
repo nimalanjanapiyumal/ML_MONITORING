@@ -1,6 +1,6 @@
-# Scalable Intelligent Network Health Monitoring Framework
+# Scalable Network Health Monitoring Framework Using Open-Source Tools
 
-This ZIP contains a complete open-source prototype project for a **Scalable Intelligent Network Health Monitoring Framework with ML-Based Anomaly Detection**.
+This repository contains a complete open-source prototype for a **Scalable Network Health Monitoring Framework Using Open-Source Tools**, enhanced with hybrid ML-based anomaly detection.
 
 The project implements a layered monitoring architecture using:
 
@@ -90,6 +90,7 @@ Grafana starts with the Prometheus dashboard by default. The Zabbix Grafana plug
 
 | Service | URL | Default Login |
 |---|---|---|
+| NHMF Operations Portal | http://localhost:8088 | No login |
 | Grafana | http://localhost:3000 | admin / admin123 |
 | Prometheus | http://localhost:9090 | No login |
 | Alertmanager | http://localhost:9093 | No login |
@@ -131,14 +132,25 @@ http://localhost:8000/metrics
 
 Prometheus scrapes this endpoint as job `ml-anomaly`.
 
+The detector combines an Isolation Forest score (65%) with a robust median/MAD deviation score (35%). This keeps the model sensitive to multivariate patterns while retaining an explainable measure of distance from the recent baseline.
+
 Main exported metrics:
 
 ```text
 nhmf_anomaly_score
 nhmf_anomaly_flag
+nhmf_anomaly_confidence
+nhmf_baseline_deviation
+nhmf_anomaly_severity_level
+nhmf_anomaly_component_score
+nhmf_attack_simulation_active
 nhmf_model_trained
 nhmf_last_run_timestamp
 ```
+
+The operations portal displays these metrics on its main board and includes controlled synthetic attack scenarios for CPU, memory, latency and service availability. These scenarios alter only the ML demonstration signals; they do not generate harmful traffic or modify the host.
+
+See `docs/ML_Threshold_Justification.md` for the score bands, colour policy, infrastructure thresholds, validation evidence and tuning limitations.
 
 ## Fault Injection
 

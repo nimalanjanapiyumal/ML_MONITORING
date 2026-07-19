@@ -79,6 +79,20 @@ services:
     networks:
       - monitoring
 
+  portal:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    volumes:
+      - ./ui-preview:/usr/share/nginx/html:ro
+      - ./docs:/usr/share/nginx/html/docs:ro
+    ports:
+      - "8088:80"
+    depends_on:
+      - grafana
+      - ml-anomaly
+    networks:
+      - monitoring
+
   ml-anomaly:
     build:
       context: ./ml-anomaly

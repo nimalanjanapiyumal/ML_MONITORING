@@ -30,6 +30,7 @@ check_url "Prometheus" "http://localhost:9090/-/healthy"
 check_url "Alertmanager" "http://localhost:9093/-/healthy"
 check_url "Grafana" "http://localhost:3000/api/health"
 check_url "ML anomaly API" "http://localhost:8000/health"
+check_url "NHMF operations portal" "http://localhost:8088"
 
 echo ""
 echo "Grafana dashboards:"

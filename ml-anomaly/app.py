@@ -5,15 +5,18 @@ import os
 import random
 import threading
 import time
+from contextlib import asynccontextmanager
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, List, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import requests
 import yaml
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-from prometheus_client import CollectorRegistry, Gauge, generate_latest, CONTENT_TYPE_LATEST
+from prometheus_client import CONTENT_TYPE_LATEST, CollectorRegistry, Counter, Gauge, generate_latest
 from starlette.responses import Response
 
 from anomaly_detector import AnomalyDetector, AnomalyResult
@@ -25,7 +28,20 @@ UNSW_MODEL_PATH = os.getenv(
     str(Path(__file__).resolve().parent / "models" / "unsw_nb15_model.joblib"),
 )
 
-app = FastAPI(title="NHMF ML Anomaly API", version="1.0.0")
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    thread = threading.Thread(target=background_loop, daemon=True)
+    thread.start()
+    yield
+
+
+app = FastAPI(title="NHMF ML Anomaly API", version="1.0.0", lifespan=lifespan)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["GET", "POST", "DELETE"],
+    allow_headers=["*"],
+)
 
 registry = CollectorRegistry()
 
@@ -40,6 +56,48 @@ anomaly_flag_gauge = Gauge(
     "nhmf_anomaly_flag",
     "Binary ML anomaly flag. 1 means anomaly, 0 means normal.",
     ["metric_name", "target", "model"],
+    registry=registry,
+)
+
+anomaly_component_gauge = Gauge(
+    "nhmf_anomaly_component_score",
+    "Normalized component score used by the hybrid anomaly decision.",
+    ["metric_name", "target", "component"],
+    registry=registry,
+)
+
+anomaly_confidence_gauge = Gauge(
+    "nhmf_anomaly_confidence",
+    "Confidence in the current anomaly decision based on data coverage and threshold separation.",
+    ["metric_name", "target"],
+    registry=registry,
+)
+
+baseline_deviation_gauge = Gauge(
+    "nhmf_baseline_deviation",
+    "Robust deviation of the latest value from its rolling baseline, measured in scaled MAD units.",
+    ["metric_name", "target"],
+    registry=registry,
+)
+
+anomaly_threshold_gauge = Gauge(
+    "nhmf_anomaly_threshold",
+    "Configured anomaly decision threshold.",
+    ["metric_name", "target"],
+    registry=registry,
+)
+
+anomaly_severity_gauge = Gauge(
+    "nhmf_anomaly_severity_level",
+    "Numeric anomaly severity: 0 normal, 1 watch, 2 warning, 3 critical.",
+    ["metric_name", "target"],
+    registry=registry,
+)
+
+telemetry_points_gauge = Gauge(
+    "nhmf_telemetry_points",
+    "Number of telemetry points used for the latest ML decision.",
+    ["metric_name", "target"],
     registry=registry,
 )
 
@@ -68,6 +126,27 @@ received_alerts_gauge = Gauge(
     registry=registry,
 )
 
+attack_simulation_active_gauge = Gauge(
+    "nhmf_attack_simulation_active",
+    "Whether a controlled lab attack simulation is active.",
+    ["scenario"],
+    registry=registry,
+)
+
+attack_simulation_remaining_gauge = Gauge(
+    "nhmf_attack_simulation_remaining_seconds",
+    "Seconds remaining in the active controlled attack simulation.",
+    ["scenario"],
+    registry=registry,
+)
+
+attack_simulation_runs_counter = Counter(
+    "nhmf_attack_simulation_runs",
+    "Number of controlled attack simulations triggered.",
+    ["scenario"],
+    registry=registry,
+)
+
 STATE = {
     "results": [],
     "last_error": "",
@@ -81,6 +160,72 @@ UNSW_STATE = {
     "last_error": "",
 }
 
+SEVERITY_LEVELS = {
+    "normal": 0,
+    "watch": 1,
+    "warning": 2,
+    "critical": 3,
+}
+
+ATTACK_SCENARIOS = {
+    "cpu_spike": {
+        "label": "CPU saturation",
+        "metric_name": "cpu_usage_percent",
+        "latest_value": 96.0,
+        "score": 0.94,
+        "model_score": 0.91,
+        "robust_score": 0.99,
+        "confidence": 0.96,
+        "baseline_deviation": 7.2,
+        "severity": "critical",
+        "description": "Injects a synthetic CPU saturation signal into the ML telemetry path.",
+    },
+    "memory_pressure": {
+        "label": "Memory pressure",
+        "metric_name": "memory_usage_percent",
+        "latest_value": 93.0,
+        "score": 0.89,
+        "model_score": 0.86,
+        "robust_score": 0.95,
+        "confidence": 0.93,
+        "baseline_deviation": 5.8,
+        "severity": "critical",
+        "description": "Injects a synthetic sustained memory pressure signal.",
+    },
+    "latency_burst": {
+        "label": "Latency burst",
+        "metric_name": "icmp_probe_duration",
+        "latest_value": 0.45,
+        "score": 0.79,
+        "model_score": 0.75,
+        "robust_score": 0.87,
+        "confidence": 0.88,
+        "baseline_deviation": 4.4,
+        "severity": "warning",
+        "description": "Injects a synthetic 450 ms ICMP latency burst.",
+    },
+    "service_outage": {
+        "label": "Service outage",
+        "metric_name": "service_availability",
+        "latest_value": 0.0,
+        "score": 0.98,
+        "model_score": 0.97,
+        "robust_score": 1.0,
+        "confidence": 0.98,
+        "baseline_deviation": 10.0,
+        "severity": "critical",
+        "description": "Injects a synthetic service availability failure without stopping containers.",
+    },
+}
+
+ATTACK_STATE = {
+    "scenario": None,
+    "started_at": 0.0,
+    "ends_at": 0.0,
+    "duration_seconds": 0,
+}
+ATTACK_LOCK = threading.Lock()
+
 
 class UNSWPredictionRequest(BaseModel):
     records: Union[Dict[str, Any], List[Dict[str, Any]]] = Field(
@@ -89,9 +234,133 @@ class UNSWPredictionRequest(BaseModel):
     )
 
 
+class AttackSimulationRequest(BaseModel):
+    scenario: str = Field(..., description="Controlled lab scenario identifier.")
+    duration_seconds: int = Field(60, ge=15, le=300)
+
+
 def load_config() -> dict:
     with open(CONFIG_PATH, "r", encoding="utf-8") as file:
         return yaml.safe_load(file)
+
+
+def threshold_policy(config: Optional[dict] = None) -> dict:
+    active_config = config or load_config()
+    model_cfg = active_config.get("model", {})
+    watch = float(model_cfg.get("watch_threshold", 0.50))
+    warning = float(model_cfg.get("anomaly_threshold", 0.65))
+    critical = float(model_cfg.get("critical_threshold", 0.85))
+    return {
+        "score_bands": [
+            {
+                "name": "Normal",
+                "minimum": 0.0,
+                "maximum": watch,
+                "color": "green",
+                "reason": "The combined model score remains inside the learned operating baseline.",
+            },
+            {
+                "name": "Watch",
+                "minimum": watch,
+                "maximum": warning,
+                "color": "yellow",
+                "reason": "Early deviation is visible, but evidence is not yet strong enough to alert.",
+            },
+            {
+                "name": "Warning",
+                "minimum": warning,
+                "maximum": critical,
+                "color": "amber",
+                "reason": "The score crosses the validated 0.65 anomaly decision boundary.",
+            },
+            {
+                "name": "Critical",
+                "minimum": critical,
+                "maximum": 1.0,
+                "color": "red",
+                "reason": "Strong agreement between pattern and robust-deviation evidence requires action.",
+            },
+        ],
+        "rule_thresholds": [
+            {
+                "metric": "CPU / memory / disk",
+                "value": "85%",
+                "duration": "3-5 minutes",
+                "reason": "Leaves 15% operating headroom and suppresses brief workload spikes.",
+            },
+            {
+                "metric": "ICMP latency",
+                "value": "200 ms",
+                "duration": "2 minutes",
+                "reason": "Represents sustained user-visible degradation rather than one slow packet.",
+            },
+            {
+                "metric": "Target availability",
+                "value": "Down",
+                "duration": "2 minutes",
+                "reason": "Avoids alerting on a single missed scrape while preserving fast fault detection.",
+            },
+        ],
+        "model": {
+            "approach": "Hybrid Isolation Forest plus robust median-deviation scoring",
+            "model_weight": float(model_cfg.get("model_weight", 0.65)),
+            "robust_weight": float(model_cfg.get("robust_weight", 0.35)),
+            "contamination": float(model_cfg.get("contamination", 0.08)),
+            "minimum_points": int(model_cfg.get("min_points", 30)),
+            "confidence_reference_points": int(model_cfg.get("confidence_reference_points", 120)),
+        },
+    }
+
+
+def prometheus_query(prom_url: str, query: str, timeout: int) -> dict:
+    response = requests.get(
+        f"{prom_url.rstrip('/')}/api/v1/query",
+        params={"query": query},
+        timeout=timeout,
+    )
+    response.raise_for_status()
+    data = response.json()
+    if data.get("status") != "success":
+        raise RuntimeError(f"Prometheus query failed: {data}")
+    return data
+
+
+def instant_value(data: dict) -> Optional[float]:
+    results = data.get("data", {}).get("result", [])
+    if not results:
+        return None
+    try:
+        return float(results[0]["value"][1])
+    except (KeyError, IndexError, TypeError, ValueError):
+        return None
+
+
+def safe_prometheus_value(prom_url: str, query: str, timeout: int) -> Optional[float]:
+    try:
+        return instant_value(prometheus_query(prom_url, query, timeout))
+    except Exception:
+        return None
+
+
+def load_training_metrics() -> dict:
+    metrics_path = Path(UNSW_MODEL_PATH).with_name("unsw_nb15_metrics.json")
+    if not metrics_path.exists():
+        return {}
+    try:
+        metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return {
+        "model_type": metrics.get("model_type"),
+        "feature_count": metrics.get("feature_count"),
+        "binary_accuracy": metrics.get("binary", {}).get("accuracy"),
+        "binary_f1": metrics.get("binary", {}).get("f1_score"),
+        "binary_roc_auc": metrics.get("binary", {}).get("roc_auc"),
+        "multiclass_accuracy": metrics.get("multiclass", {}).get("accuracy"),
+        "multiclass_f1": metrics.get("multiclass", {}).get("f1_score"),
+        "multiclass_roc_auc": metrics.get("multiclass", {}).get("roc_auc"),
+        "anomaly_roc_auc": metrics.get("anomaly", {}).get("roc_auc"),
+    }
 
 
 def load_unsw_model() -> UNSWNB15Pipeline:
@@ -118,6 +387,148 @@ def load_unsw_model() -> UNSWNB15Pipeline:
             raise HTTPException(status_code=500, detail=f"Failed to load UNSW-NB15 model: {exc}") from exc
 
     return UNSW_STATE["model"]
+
+
+def publish_result(result: AnomalyResult) -> None:
+    anomaly_score_gauge.labels(result.metric_name, result.target, result.model).set(result.score)
+    anomaly_flag_gauge.labels(result.metric_name, result.target, result.model).set(result.flag)
+    anomaly_component_gauge.labels(result.metric_name, result.target, "isolation_forest").set(result.model_score)
+    anomaly_component_gauge.labels(result.metric_name, result.target, "robust_deviation").set(result.robust_score)
+    anomaly_confidence_gauge.labels(result.metric_name, result.target).set(result.confidence)
+    baseline_deviation_gauge.labels(result.metric_name, result.target).set(result.baseline_deviation)
+    anomaly_threshold_gauge.labels(result.metric_name, result.target).set(result.threshold)
+    anomaly_severity_gauge.labels(result.metric_name, result.target).set(SEVERITY_LEVELS[result.severity])
+    telemetry_points_gauge.labels(result.metric_name, result.target).set(result.points)
+    latest_value_gauge.labels(result.metric_name, result.target).set(result.latest_value)
+
+
+def simulated_result(scenario: str) -> AnomalyResult:
+    definition = ATTACK_SCENARIOS[scenario]
+    config = load_config()
+    threshold = float(config.get("model", {}).get("anomaly_threshold", 0.65))
+    return AnomalyResult(
+        metric_name=str(definition["metric_name"]),
+        target="controlled-lab-simulation",
+        score=float(definition["score"]),
+        model_score=float(definition["model_score"]),
+        robust_score=float(definition["robust_score"]),
+        confidence=float(definition["confidence"]),
+        baseline_deviation=float(definition["baseline_deviation"]),
+        flag=1,
+        severity=str(definition["severity"]),
+        threshold=threshold,
+        latest_value=float(definition["latest_value"]),
+        model="controlled_attack_simulation",
+        points=int(config.get("model", {}).get("confidence_reference_points", 120)),
+    )
+
+
+def clear_simulation_metrics(scenario: str) -> None:
+    definition = ATTACK_SCENARIOS[scenario]
+    metric_name = str(definition["metric_name"])
+    target = "controlled-lab-simulation"
+    model = "controlled_attack_simulation"
+    attack_simulation_active_gauge.labels(scenario).set(0)
+    attack_simulation_remaining_gauge.labels(scenario).set(0)
+    anomaly_score_gauge.labels(metric_name, target, model).set(0)
+    anomaly_flag_gauge.labels(metric_name, target, model).set(0)
+    anomaly_confidence_gauge.labels(metric_name, target).set(0)
+    baseline_deviation_gauge.labels(metric_name, target).set(0)
+    anomaly_severity_gauge.labels(metric_name, target).set(0)
+
+
+def attack_simulation_status() -> dict:
+    expired_scenario = None
+    with ATTACK_LOCK:
+        scenario = ATTACK_STATE["scenario"]
+        now = time.time()
+        if scenario and ATTACK_STATE["ends_at"] <= now:
+            expired_scenario = str(scenario)
+            ATTACK_STATE.update(
+                {
+                    "scenario": None,
+                    "started_at": 0.0,
+                    "ends_at": 0.0,
+                    "duration_seconds": 0,
+                }
+            )
+            scenario = None
+
+        if not scenario:
+            status = {
+                "active": False,
+                "scenario": None,
+                "label": None,
+                "remaining_seconds": 0,
+                "started_at": None,
+                "ends_at": None,
+            }
+        else:
+            remaining = max(int(ATTACK_STATE["ends_at"] - now), 0)
+            attack_simulation_remaining_gauge.labels(str(scenario)).set(remaining)
+            status = {
+                "active": True,
+                "scenario": scenario,
+                "label": ATTACK_SCENARIOS[str(scenario)]["label"],
+                "remaining_seconds": remaining,
+                "started_at": ATTACK_STATE["started_at"],
+                "ends_at": ATTACK_STATE["ends_at"],
+            }
+
+    if expired_scenario:
+        clear_simulation_metrics(expired_scenario)
+    return status
+
+
+def start_attack_simulation(scenario: str, duration_seconds: int) -> dict:
+    if scenario not in ATTACK_SCENARIOS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Unknown scenario. Choose one of: {', '.join(ATTACK_SCENARIOS)}",
+        )
+
+    now = time.time()
+    with ATTACK_LOCK:
+        previous = ATTACK_STATE["scenario"]
+        ATTACK_STATE.update(
+            {
+                "scenario": scenario,
+                "started_at": now,
+                "ends_at": now + duration_seconds,
+                "duration_seconds": duration_seconds,
+            }
+        )
+
+    if previous and previous != scenario:
+        clear_simulation_metrics(str(previous))
+    for scenario_name in ATTACK_SCENARIOS:
+        attack_simulation_active_gauge.labels(scenario_name).set(1 if scenario_name == scenario else 0)
+        attack_simulation_remaining_gauge.labels(scenario_name).set(duration_seconds if scenario_name == scenario else 0)
+    attack_simulation_runs_counter.labels(scenario).inc()
+
+    result = simulated_result(scenario)
+    publish_result(result)
+    existing = [item for item in STATE["results"] if item.get("target") != "controlled-lab-simulation"]
+    STATE["results"] = existing + [result.__dict__]
+    last_run_gauge.set(time.time())
+    return attack_simulation_status()
+
+
+def cancel_attack_simulation() -> dict:
+    with ATTACK_LOCK:
+        scenario = ATTACK_STATE["scenario"]
+        ATTACK_STATE.update(
+            {
+                "scenario": None,
+                "started_at": 0.0,
+                "ends_at": 0.0,
+                "duration_seconds": 0,
+            }
+        )
+    if scenario:
+        clear_simulation_metrics(str(scenario))
+    STATE["results"] = [item for item in STATE["results"] if item.get("target") != "controlled-lab-simulation"]
+    return attack_simulation_status()
 
 
 def prometheus_query_range(prom_url: str, query: str, lookback_minutes: int, step_seconds: int, timeout: int) -> dict:
@@ -189,9 +600,15 @@ def run_detection_once() -> None:
         contamination=float(model_cfg.get("contamination", 0.08)),
         random_state=int(model_cfg.get("random_state", 42)),
         anomaly_threshold=float(model_cfg.get("anomaly_threshold", 0.65)),
+        watch_threshold=float(model_cfg.get("watch_threshold", 0.50)),
+        critical_threshold=float(model_cfg.get("critical_threshold", 0.85)),
+        model_weight=float(model_cfg.get("model_weight", 0.65)),
+        robust_weight=float(model_cfg.get("robust_weight", 0.35)),
+        confidence_reference_points=int(model_cfg.get("confidence_reference_points", 120)),
     )
 
     results: List[AnomalyResult] = []
+    cycle_errors = []
     try:
         for metric_cfg in config["metrics"]:
             metric_name = metric_cfg["name"]
@@ -207,7 +624,7 @@ def run_detection_once() -> None:
                 )
                 series_list = extract_series(data, metric_name, target_label)
             except Exception as exc:
-                STATE["last_error"] = f"{metric_name}: {exc}"
+                cycle_errors.append(f"{metric_name}: {exc}")
                 if runtime_cfg.get("demo_mode_if_prometheus_unavailable", True):
                     series_list = demo_series(metric_name)
                 else:
@@ -220,13 +637,19 @@ def run_detection_once() -> None:
                 result = detector.score_series(metric_name, target, values)
                 results.append(result)
 
-                anomaly_score_gauge.labels(result.metric_name, result.target, result.model).set(result.score)
-                anomaly_flag_gauge.labels(result.metric_name, result.target, result.model).set(result.flag)
-                latest_value_gauge.labels(result.metric_name, result.target).set(result.latest_value)
+        simulation = attack_simulation_status()
+        if simulation["active"]:
+            simulated = simulated_result(str(simulation["scenario"]))
+            results = [result for result in results if result.metric_name != simulated.metric_name]
+            results.append(simulated)
+
+        for result in results:
+            publish_result(result)
 
         model_trained_gauge.set(1 if results else 0)
         last_run_gauge.set(time.time())
         STATE["results"] = [r.__dict__ for r in results]
+        STATE["last_error"] = "; ".join(cycle_errors)
     except Exception as exc:
         STATE["last_error"] = str(exc)
         model_trained_gauge.set(0)
@@ -239,10 +662,74 @@ def background_loop() -> None:
         time.sleep(int(config.get("runtime", {}).get("refresh_seconds", 30)))
 
 
-@app.on_event("startup")
-def startup() -> None:
-    thread = threading.Thread(target=background_loop, daemon=True)
-    thread.start()
+def portal_overview_payload() -> dict:
+    config = load_config()
+    prom_cfg = config["prometheus"]
+    prom_url = str(prom_cfg["url"])
+    timeout = min(int(prom_cfg.get("query_timeout_seconds", 10)), 3)
+    live_results = list(STATE["results"])
+    peak_result = max(live_results, key=lambda item: float(item.get("score", 0.0)), default={})
+    confidences = [float(item.get("confidence", 0.0)) for item in live_results]
+    deviations = [float(item.get("baseline_deviation", 0.0)) for item in live_results]
+
+    queries = {
+        "service_prometheus": 'max(up{job="prometheus"})',
+        "service_node_exporter": 'max(up{job="node-exporter"})',
+        "service_ml_anomaly": 'max(up{job="ml-anomaly"})',
+        "service_pushgateway": 'max(up{job="pushgateway"})',
+        "service_blackbox_icmp": 'max(up{job="blackbox-icmp"})',
+        "service_blackbox_http": 'max(up{job="blackbox-http"})',
+        "healthy_targets": "sum(up == 1)",
+        "unavailable_targets": "sum(up == 0)",
+        "active_alerts": 'count(ALERTS{alertstate="firing"}) or vector(0)',
+        "cpu_usage_percent": 'max(100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[2m])) * 100))',
+        "memory_usage_percent": "max((1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100)",
+        "icmp_latency_seconds": 'max(probe_duration_seconds{job="blackbox-icmp"})',
+    }
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        futures = {
+            name: executor.submit(safe_prometheus_value, prom_url, query, timeout)
+            for name, query in queries.items()
+        }
+        values = {name: future.result() for name, future in futures.items()}
+
+    services = {
+        "prometheus": values["service_prometheus"],
+        "node_exporter": values["service_node_exporter"],
+        "ml_anomaly": values["service_ml_anomaly"],
+        "pushgateway": values["service_pushgateway"],
+        "blackbox_icmp": values["service_blackbox_icmp"],
+        "blackbox_http": values["service_blackbox_http"],
+    }
+
+    return {
+        "status": "ok" if not STATE["last_error"] else "degraded",
+        "last_updated": time.time(),
+        "last_error": STATE["last_error"],
+        "operations": {
+            "healthy_targets": values["healthy_targets"],
+            "unavailable_targets": values["unavailable_targets"],
+            "active_alerts": values["active_alerts"],
+            "cpu_usage_percent": values["cpu_usage_percent"],
+            "memory_usage_percent": values["memory_usage_percent"],
+            "icmp_latency_seconds": values["icmp_latency_seconds"],
+        },
+        "ml": {
+            "model_trained": bool(live_results),
+            "result_count": len(live_results),
+            "active_flags": sum(int(item.get("flag", 0)) for item in live_results),
+            "peak_score": float(peak_result.get("score", 0.0)) if peak_result else 0.0,
+            "peak_metric": peak_result.get("metric_name") if peak_result else None,
+            "peak_severity": peak_result.get("severity", "normal") if peak_result else "normal",
+            "average_confidence": sum(confidences) / len(confidences) if confidences else 0.0,
+            "maximum_baseline_deviation": max(deviations, default=0.0),
+            "results": sorted(live_results, key=lambda item: float(item.get("score", 0.0)), reverse=True),
+            "training_evaluation": load_training_metrics(),
+        },
+        "services": services,
+        "simulation": attack_simulation_status(),
+        "thresholds": threshold_policy(config),
+    }
 
 
 @app.get("/health")
@@ -255,12 +742,61 @@ def health() -> dict:
         "result_count": len(STATE["results"]),
         "unsw_model_available": unsw_model_path.exists(),
         "unsw_model_path": str(unsw_model_path),
+        "ml_approach": "hybrid_isolation_forest_robust_deviation",
+        "simulation": attack_simulation_status(),
     }
 
 
 @app.get("/results")
 def results() -> dict:
-    return {"results": STATE["results"], "last_error": STATE["last_error"]}
+    return {
+        "results": STATE["results"],
+        "last_error": STATE["last_error"],
+        "simulation": attack_simulation_status(),
+        "thresholds": threshold_policy(),
+    }
+
+
+@app.get("/portal/overview")
+def portal_overview() -> dict:
+    return portal_overview_payload()
+
+
+@app.get("/thresholds")
+def thresholds() -> dict:
+    return threshold_policy()
+
+
+@app.get("/attack-simulations")
+def attack_simulations() -> dict:
+    return {
+        "scenarios": [
+            {
+                "id": scenario,
+                "label": definition["label"],
+                "metric_name": definition["metric_name"],
+                "description": definition["description"],
+                "expected_score": definition["score"],
+                "expected_severity": definition["severity"],
+            }
+            for scenario, definition in ATTACK_SCENARIOS.items()
+        ],
+        "current": attack_simulation_status(),
+        "safety": "Synthetic telemetry only; no packets, containers, or host resources are modified.",
+    }
+
+
+@app.post("/attack-simulations")
+def trigger_attack_simulation(payload: AttackSimulationRequest) -> dict:
+    return {
+        "simulation": start_attack_simulation(payload.scenario, payload.duration_seconds),
+        "expected": ATTACK_SCENARIOS[payload.scenario],
+    }
+
+
+@app.delete("/attack-simulations/current")
+def stop_attack_simulation() -> dict:
+    return {"simulation": cancel_attack_simulation()}
 
 
 @app.get("/unsw/model-info")

@@ -19,3 +19,19 @@ def test_detector_returns_result():
     result = detector.score_series("demo_metric", "demo_target", values)
     assert result.points == 51
     assert 0.0 <= result.score <= 1.0
+    assert 0.0 <= result.model_score <= 1.0
+    assert 0.0 <= result.robust_score <= 1.0
+    assert 0.0 <= result.confidence <= 1.0
+    assert result.baseline_deviation > 1.0
+    assert result.flag == 1
+    assert result.severity == "critical"
+    assert result.threshold == 0.65
+
+
+def test_detector_keeps_stable_series_normal():
+    values = [50.0 + ((index % 3) - 1) * 0.2 for index in range(120)]
+    detector = AnomalyDetector()
+    result = detector.score_series("stable_metric", "demo_target", values)
+    assert result.score < result.threshold
+    assert result.flag == 0
+    assert result.severity in {"normal", "watch"}

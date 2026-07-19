@@ -62,11 +62,21 @@ groups:
           description: "Disk usage on {{ $labels.instance }} {{ $labels.mountpoint }} is above 85%."
 
       - alert: MLAnomalyDetected
-        expr: nhmf_anomaly_flag == 1
-        for: 1m
+        expr: nhmf_anomaly_severity_level == 2
+        for: 30s
         labels:
           severity: warning
           category: ml-anomaly
         annotations:
           summary: "ML anomaly detected"
-          description: "ML anomaly detector flagged metric {{ $labels.metric_name }} for {{ $labels.target }}. Score={{ $value }}."
+          description: "ML warning persisted for {{ $labels.metric_name }} on {{ $labels.target }}."
+
+      - alert: MLCriticalAnomaly
+        expr: nhmf_anomaly_severity_level == 3
+        for: 15s
+        labels:
+          severity: critical
+          category: ml-anomaly
+        annotations:
+          summary: "Critical ML anomaly detected"
+          description: "Critical ML evidence persisted for {{ $labels.metric_name }} on {{ $labels.target }}."
