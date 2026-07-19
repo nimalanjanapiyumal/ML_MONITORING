@@ -83,7 +83,9 @@ services:
     image: nginx:1.27-alpine
     restart: unless-stopped
     volumes:
-      - ./ui-preview:/usr/share/nginx/html:ro
+      - ./ui-preview/index.html:/usr/share/nginx/html/index.html:ro
+      - ./ui-preview/app.js:/usr/share/nginx/html/app.js:ro
+      - ./ui-preview/styles.css:/usr/share/nginx/html/styles.css:ro
       - ./docs:/usr/share/nginx/html/docs:ro
     ports:
       - "8088:80"
