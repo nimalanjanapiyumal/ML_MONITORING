@@ -695,6 +695,23 @@ def portal_overview_payload() -> dict:
         }
         values = {name: future.result() for name, future in futures.items()}
 
+    # Direct probe fallbacks if Prometheus has not yet completed a scrape cycle
+    if values.get("service_zabbix") in (None, 0.0):
+        try:
+            r = requests.get("http://zabbix-web:8080", timeout=1.0, allow_redirects=True)
+            if r.status_code in (200, 204, 301, 302, 303, 307, 308):
+                values["service_zabbix"] = 1.0
+        except Exception:
+            pass
+
+    if values.get("service_suricata_exporter") in (None, 0.0):
+        try:
+            r = requests.get("http://suricata-exporter:9517/health", timeout=1.0)
+            if r.status_code == 200:
+                values["service_suricata_exporter"] = 1.0
+        except Exception:
+            pass
+
     services = {
         "prometheus": values["service_prometheus"],
         "node_exporter": values["service_node_exporter"],

@@ -11,4 +11,6 @@ modules:
     http:
       method: GET
       preferred_ip_protocol: ip4
-      valid_status_codes: []
+      valid_status_codes: [200, 204, 301, 302, 303, 307, 308]
+      no_follow_redirects: false
+      fail_if_not_ssl: false

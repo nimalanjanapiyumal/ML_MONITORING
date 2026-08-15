@@ -52,6 +52,7 @@ scrape_configs:
           - prometheus
           - grafana
           - alertmanager
+          - ml-anomaly
           - zabbix-web
           - zabbix-server
     relabel_configs:
@@ -73,6 +74,7 @@ scrape_configs:
           - http://alertmanager:9093/-/healthy
           - http://ml-anomaly:8000/health
           - http://portal
+          - http://suricata-exporter:9517/health
           - http://zabbix-web:8080
     relabel_configs:
       - source_labels: [__address__]
