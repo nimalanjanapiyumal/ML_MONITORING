@@ -679,6 +679,8 @@ def portal_overview_payload() -> dict:
         "service_pushgateway": 'max(up{job="pushgateway"})',
         "service_blackbox_icmp": 'max(up{job="blackbox-icmp"})',
         "service_blackbox_http": 'max(up{job="blackbox-http"})',
+        "service_suricata_exporter": 'max(up{job="suricata-exporter"})',
+        "service_zabbix": 'max(probe_success{job="blackbox-http", target=~".*zabbix.*"}) or max(probe_success{job="blackbox-icmp", target=~".*zabbix.*"})',
         "healthy_targets": "sum(up == 1)",
         "unavailable_targets": "sum(up == 0)",
         "active_alerts": 'count(ALERTS{alertstate="firing"}) or vector(0)',
@@ -700,6 +702,8 @@ def portal_overview_payload() -> dict:
         "pushgateway": values["service_pushgateway"],
         "blackbox_icmp": values["service_blackbox_icmp"],
         "blackbox_http": values["service_blackbox_http"],
+        "suricata_exporter": values["service_suricata_exporter"],
+        "zabbix": values["service_zabbix"],
     }
 
     return {

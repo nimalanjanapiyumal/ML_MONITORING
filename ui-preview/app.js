@@ -4,10 +4,12 @@ const apiBase = `http://${host}:8000`;
 const serviceUrls = {
   "grafana-main": `http://${host}:3000/d/nhmf-main/network-health-monitoring-hybrid-operations-dashboard`,
   "grafana-ml": `http://${host}:3000/d/nhmf-ml/ml-anomaly-detection-dashboard`,
+  "suricata-ids": `http://${host}:3000/d/nhmf-suricata/suricata-ids-dashboard`,
   prometheus: `http://${host}:9090`,
   alertmanager: `http://${host}:9093`,
   zabbix: `http://${host}:8080`,
   "ml-api": `${apiBase}/docs`,
+  "suricata-metrics": `http://${host}:9517/metrics`,
   pushgateway: `http://${host}:9091`,
   blackbox: `http://${host}:9115`
 };

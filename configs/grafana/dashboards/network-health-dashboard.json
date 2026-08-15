@@ -91,6 +91,18 @@
       "tooltip": "Open Suricata intrusion detection dashboard",
       "type": "link",
       "url": "/d/nhmf-suricata/suricata-ids-dashboard"
+    },
+    {
+      "asDropdown": false,
+      "icon": "external link",
+      "includeVars": false,
+      "keepTime": false,
+      "tags": [],
+      "targetBlank": true,
+      "title": "Zabbix",
+      "tooltip": "Open Zabbix Web UI",
+      "type": "link",
+      "url": "http://localhost:8080"
     }
   ],
   "liveNow": false,

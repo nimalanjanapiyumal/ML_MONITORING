@@ -34,8 +34,8 @@ services:
     image: grafana/grafana:11.2.0
     restart: unless-stopped
     environment:
-      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER}
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin123}
       GF_INSTALL_PLUGINS: ${GRAFANA_INSTALL_PLUGINS:-}
     volumes:
       - grafana-data:/var/lib/grafana
@@ -169,10 +169,16 @@ services:
       - "--collation-server=utf8mb4_bin"
       - "--default-authentication-plugin=mysql_native_password"
     environment:
-      MYSQL_DATABASE: ${ZABBIX_DB_NAME}
-      MYSQL_USER: ${ZABBIX_DB_USER}
-      MYSQL_PASSWORD: ${ZABBIX_DB_PASSWORD}
-      MYSQL_ROOT_PASSWORD: ${ZABBIX_DB_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${ZABBIX_DB_NAME:-zabbix}
+      MYSQL_USER: ${ZABBIX_DB_USER:-zabbix}
+      MYSQL_PASSWORD: ${ZABBIX_DB_PASSWORD:-zabbix}
+      MYSQL_ROOT_PASSWORD: ${ZABBIX_DB_ROOT_PASSWORD:-zabbix-root}
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u root -p${ZABBIX_DB_ROOT_PASSWORD:-zabbix-root} --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
     volumes:
       - zabbix-db-data:/var/lib/mysql
     networks:
@@ -183,12 +189,13 @@ services:
     restart: unless-stopped
     environment:
       DB_SERVER_HOST: zabbix-db
-      MYSQL_DATABASE: ${ZABBIX_DB_NAME}
-      MYSQL_USER: ${ZABBIX_DB_USER}
-      MYSQL_PASSWORD: ${ZABBIX_DB_PASSWORD}
-      MYSQL_ROOT_PASSWORD: ${ZABBIX_DB_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${ZABBIX_DB_NAME:-zabbix}
+      MYSQL_USER: ${ZABBIX_DB_USER:-zabbix}
+      MYSQL_PASSWORD: ${ZABBIX_DB_PASSWORD:-zabbix}
+      MYSQL_ROOT_PASSWORD: ${ZABBIX_DB_ROOT_PASSWORD:-zabbix-root}
     depends_on:
-      - zabbix-db
+      zabbix-db:
+        condition: service_healthy
     ports:
       - "10051:10051"
     networks:
@@ -200,14 +207,16 @@ services:
     environment:
       ZBX_SERVER_HOST: zabbix-server
       DB_SERVER_HOST: zabbix-db
-      MYSQL_DATABASE: ${ZABBIX_DB_NAME}
-      MYSQL_USER: ${ZABBIX_DB_USER}
-      MYSQL_PASSWORD: ${ZABBIX_DB_PASSWORD}
-      MYSQL_ROOT_PASSWORD: ${ZABBIX_DB_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${ZABBIX_DB_NAME:-zabbix}
+      MYSQL_USER: ${ZABBIX_DB_USER:-zabbix}
+      MYSQL_PASSWORD: ${ZABBIX_DB_PASSWORD:-zabbix}
+      MYSQL_ROOT_PASSWORD: ${ZABBIX_DB_ROOT_PASSWORD:-zabbix-root}
       PHP_TZ: Asia/Colombo
     depends_on:
-      - zabbix-server
-      - zabbix-db
+      zabbix-db:
+        condition: service_healthy
+      zabbix-server:
+        condition: service_started
     ports:
       - "8080:8080"
     networks:
