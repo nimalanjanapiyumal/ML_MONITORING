@@ -122,3 +122,35 @@ groups:
         annotations:
           summary: "Suricata exporter is unreachable"
           description: "Prometheus cannot scrape suricata-exporter. IDS visibility is degraded."
+
+  - name: zabbix-infrastructure-alerts
+    rules:
+      - alert: ZabbixWebDown
+        expr: probe_success{job="blackbox-http", target=~"http://zabbix-web:8080.*"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          category: zabbix
+        annotations:
+          summary: "Zabbix Web UI is down"
+          description: "Blackbox HTTP probe failed to connect to Zabbix Web UI on port 8080."
+
+      - alert: ZabbixServerUnreachable
+        expr: probe_success{job="blackbox-icmp", target="zabbix-server"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          category: zabbix
+        annotations:
+          summary: "Zabbix Server daemon is unreachable"
+          description: "Zabbix Server container is not responding to network probes."
+
+      - alert: ZabbixWebHighLatency
+        expr: probe_duration_seconds{job="blackbox-http", target=~"http://zabbix-web:8080.*"} > 0.5
+        for: 2m
+        labels:
+          severity: warning
+          category: zabbix
+        annotations:
+          summary: "Zabbix Web response latency is high"
+          description: "Zabbix Web response duration exceeded 500ms for more than 2 minutes."

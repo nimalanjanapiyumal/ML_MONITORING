@@ -34,6 +34,30 @@
     },
     {
       "asDropdown": false,
+      "icon": "shield",
+      "includeVars": false,
+      "keepTime": true,
+      "tags": [],
+      "targetBlank": false,
+      "title": "Suricata IDS",
+      "tooltip": "Open Suricata intrusion detection dashboard",
+      "type": "link",
+      "url": "/d/nhmf-suricata/suricata-ids-dashboard"
+    },
+    {
+      "asDropdown": false,
+      "icon": "dashboard",
+      "includeVars": false,
+      "keepTime": true,
+      "tags": [],
+      "targetBlank": false,
+      "title": "Zabbix Dashboard",
+      "tooltip": "Open Zabbix infrastructure dashboard",
+      "type": "link",
+      "url": "/d/nhmf-zabbix/zabbix-infrastructure-host-dashboard"
+    },
+    {
+      "asDropdown": false,
       "icon": "external link",
       "includeVars": false,
       "keepTime": false,

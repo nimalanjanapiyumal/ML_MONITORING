@@ -674,6 +674,8 @@ def portal_overview_payload() -> dict:
 
     queries = {
         "service_prometheus": 'max(up{job="prometheus"})',
+        "service_grafana": 'max(probe_success{job="blackbox-http", target=~".*grafana.*"})',
+        "service_alertmanager": 'max(probe_success{job="blackbox-http", target=~".*alertmanager.*"})',
         "service_node_exporter": 'max(up{job="node-exporter"})',
         "service_ml_anomaly": 'max(up{job="ml-anomaly"})',
         "service_pushgateway": 'max(up{job="pushgateway"})',
@@ -688,7 +690,7 @@ def portal_overview_payload() -> dict:
         "memory_usage_percent": "max((1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100)",
         "icmp_latency_seconds": 'max(probe_duration_seconds{job="blackbox-icmp"})',
     }
-    with ThreadPoolExecutor(max_workers=8) as executor:
+    with ThreadPoolExecutor(max_workers=10) as executor:
         futures = {
             name: executor.submit(safe_prometheus_value, prom_url, query, timeout)
             for name, query in queries.items()
@@ -713,14 +715,16 @@ def portal_overview_payload() -> dict:
             pass
 
     services = {
-        "prometheus": values["service_prometheus"],
-        "node_exporter": values["service_node_exporter"],
-        "ml_anomaly": values["service_ml_anomaly"],
-        "pushgateway": values["service_pushgateway"],
-        "blackbox_icmp": values["service_blackbox_icmp"],
-        "blackbox_http": values["service_blackbox_http"],
-        "suricata_exporter": values["service_suricata_exporter"],
-        "zabbix": values["service_zabbix"],
+        "prometheus": values.get("service_prometheus"),
+        "grafana": values.get("service_grafana") if values.get("service_grafana") is not None else values.get("service_prometheus"),
+        "alertmanager": values.get("service_alertmanager") if values.get("service_alertmanager") is not None else values.get("service_prometheus"),
+        "node_exporter": values.get("service_node_exporter"),
+        "ml_anomaly": values.get("service_ml_anomaly"),
+        "pushgateway": values.get("service_pushgateway"),
+        "blackbox_icmp": values.get("service_blackbox_icmp"),
+        "blackbox_http": values.get("service_blackbox_http"),
+        "suricata_exporter": values.get("service_suricata_exporter"),
+        "zabbix": values.get("service_zabbix"),
     }
 
     return {

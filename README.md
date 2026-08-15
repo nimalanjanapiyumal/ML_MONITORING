@@ -270,14 +270,41 @@ The ML subsystem operates a hybrid decision algorithm:
 
 ## Grafana Dashboards
 
-Grafana is provisioned with 3 dashboards located in the **NHMF** folder:
+Grafana is pre-provisioned with 4 dashboards located in the **NHMF** folder:
 
 1. **Network Health Monitoring - Hybrid Operations Dashboard** (`/d/nhmf-main/`):
    - Executive overview: Target uptime, active alerts, host CPU/RAM/Disk baselines, and ICMP probe duration.
 2. **ML Anomaly Detection Dashboard** (`/d/nhmf-ml/`):
-   - Real-time ML anomaly score curves, confidence bands, baseline deviation, and model state.
+   - Real-time ML anomaly score curves, confidence bands, baseline deviation, and model training state.
 3. **Suricata IDS Dashboard** (`/d/nhmf-suricata/`):
    - 20-panel threat monitoring view: Stacked alert rate timeline, top 15 signatures, protocol distribution, flow throughput, DNS record anomalies, TLS JA3 hashes, and HTTP status codes.
+4. **Zabbix Infrastructure & Host Dashboard** (`/d/nhmf-zabbix/`):
+   - Comprehensive infrastructure monitoring: Zabbix Web response latency breakdown (connect/PHP-FPM time), Server ping RTT, MySQL DB status, CPU/Memory/Disk/Network metrics, and active alert counters.
+
+---
+
+## Zabbix Enterprise NMS & API Automation
+
+Zabbix 7.0 LTS is fully integrated with automated JSON-RPC API tooling:
+
+### Managing Zabbix via CLI
+
+```bash
+# Check Zabbix API status and list monitored hosts & problems
+./scripts/setup_zabbix.sh status
+
+# Auto-register / link host with Linux Agent template
+./scripts/setup_zabbix.sh setup-host --host-name "NHMF-Docker-Host"
+
+# Inspect current active problem triggers
+./scripts/setup_zabbix.sh problems
+
+# List all available monitoring templates
+./scripts/setup_zabbix.sh templates
+```
+
+- **Web GUI:** [http://localhost:8080](http://localhost:8080) (`Admin` / `zabbix`)
+- **JSON-RPC API:** `http://localhost:8080/api_jsonrpc.php`
 
 ---
 

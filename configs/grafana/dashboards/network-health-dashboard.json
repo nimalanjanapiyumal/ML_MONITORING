@@ -94,13 +94,25 @@
     },
     {
       "asDropdown": false,
+      "icon": "dashboard",
+      "includeVars": false,
+      "keepTime": true,
+      "tags": [],
+      "targetBlank": false,
+      "title": "Zabbix Dashboard",
+      "tooltip": "Open Zabbix infrastructure and host monitoring dashboard",
+      "type": "link",
+      "url": "/d/nhmf-zabbix/zabbix-infrastructure-host-dashboard"
+    },
+    {
+      "asDropdown": false,
       "icon": "external link",
       "includeVars": false,
       "keepTime": false,
       "tags": [],
       "targetBlank": true,
-      "title": "Zabbix",
-      "tooltip": "Open Zabbix Web UI",
+      "title": "Zabbix Web",
+      "tooltip": "Open Zabbix native Web UI",
       "type": "link",
       "url": "http://localhost:8080"
     }
