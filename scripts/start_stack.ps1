@@ -63,7 +63,9 @@ function Cleanup-LegacyContainers {
         "nhmf-zabbix-db",
         "nhmf-zabbix-server",
         "nhmf-zabbix-web",
-        "nhmf-zabbix-agent"
+        "nhmf-zabbix-agent",
+        "nhmf-suricata",
+        "nhmf-suricata-exporter"
     )
 
     foreach ($name in $names) {
@@ -149,13 +151,19 @@ Test-Url -Name "Grafana" -Url "http://localhost:3000/api/health" -TimeoutSeconds
 Test-Url -Name "ML anomaly API" -Url "http://localhost:8000/health" -TimeoutSeconds 90 -ServiceName "ml-anomaly"
 Test-Url -Name "Operations Portal" -Url "http://localhost:8088" -TimeoutSeconds 90 -ServiceName "portal"
 Test-Url -Name "Zabbix Web" -Url "http://localhost:8080" -TimeoutSeconds 180 -ServiceName "zabbix-web"
+Test-Url -Name "Suricata Exporter" -Url "http://localhost:9517/health" -TimeoutSeconds 60 -ServiceName "suricata-exporter"
 
 Write-Host ""
-Write-Host "Services:"
-Write-Host "Main Portal:   http://localhost:8088"
-Write-Host "Grafana:       http://localhost:3000  admin/admin123"
-Write-Host "ML Dashboard:  http://localhost:3000/d/nhmf-ml/ml-anomaly-detection-dashboard"
-Write-Host "Prometheus:    http://localhost:9090"
-Write-Host "Alertmanager:  http://localhost:9093"
-Write-Host "ML API:        http://localhost:8000/health"
-Write-Host "Zabbix:        http://localhost:8080  Admin/zabbix"
+Write-Host "============================================================"
+Write-Host " NHMF Services Ready"
+Write-Host "============================================================"
+Write-Host "Main Portal:          http://localhost:8088"
+Write-Host "Grafana:              http://localhost:3000  (admin/admin123)"
+Write-Host "ML Dashboard:         http://localhost:3000/d/nhmf-ml/ml-anomaly-detection-dashboard"
+Write-Host "Suricata IDS:         http://localhost:3000/d/nhmf-suricata/suricata-ids-dashboard"
+Write-Host "Prometheus:           http://localhost:9090"
+Write-Host "Alertmanager:         http://localhost:9093"
+Write-Host "ML API:               http://localhost:8000/health"
+Write-Host "Suricata Metrics:     http://localhost:9517/metrics"
+Write-Host "Zabbix:               http://localhost:8080  (Admin/zabbix)"
+Write-Host "============================================================"

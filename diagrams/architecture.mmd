@@ -1,13 +1,52 @@
-flowchart LR
-    A[Telemetry Sources<br/>Linux Hosts<br/>Network Devices<br/>HTTP/ICMP Targets] --> B[Exporters<br/>Node Exporter<br/>Blackbox Exporter<br/>SNMP Exporter]
-    A --> C[Zabbix Agent / Proxy]
-    B --> D[Prometheus TSDB]
-    C --> E[Zabbix Server]
-    D --> F[Python ML Anomaly API<br/>Feature Engineering<br/>Isolation Forest / LOF / OCSVM]
-    F --> D
-    D --> G[Alertmanager<br/>Grouping Routing Silencing]
-    D --> H[Grafana Dashboards]
-    E --> H
-    F --> H
-    G --> H
-    H --> I[Evaluation Layer<br/>KPIs<br/>TTD<br/>Alert Noise<br/>Dashboard Response]
+flowchart TB
+    subgraph Sources["Telemetry & Network Sources"]
+        Host["Linux Host Telemetry"]
+        Net["Network Traffic (AF-PACKET)"]
+        Endpoints["ICMP / HTTP Targets"]
+        SNMPDev["SNMP Devices (Optional)"]
+    end
+
+    subgraph Collectors["Collection & Export Layer"]
+        NodeExp["Node Exporter (:9100)"]
+        Blackbox["Blackbox Exporter (:9115)"]
+        Suricata["Suricata IDS (AF-PACKET / EVE-JSON)"]
+        SuriExp["Suricata Exporter (:9517)"]
+        Pushgw["Pushgateway (:9091)"]
+        ZbxAgent["Zabbix Agent (:10050)"]
+    end
+
+    subgraph StorageEngine["Time-Series & Analysis"]
+        Prom["Prometheus TSDB (:9090)<br/>Alert & Recording Rules"]
+        ML["ML Anomaly API (:8000)<br/>UNSW-NB15 Isolation Forest + MAD"]
+        ZbxServer["Zabbix Server & DB (:10051 / :8080)"]
+    end
+
+    subgraph Alerts["Alerting & Action"]
+        AM["Alertmanager (:9093)<br/>Routing, Grouping, Webhooks"]
+    end
+
+    subgraph Presentation["Operations & Visualization"]
+        Grafana["Grafana (:3000)<br/>- Network Health Dashboard<br/>- ML Anomaly Dashboard<br/>- Suricata IDS Dashboard"]
+        Portal["Operations Portal (:8088)<br/>Real-Time Status & Simulations"]
+    end
+
+    Host --> NodeExp
+    Endpoints --> Blackbox
+    Net --> Suricata
+    Suricata --> SuriExp
+    Host --> ZbxAgent
+
+    NodeExp --> Prom
+    Blackbox --> Prom
+    SuriExp --> Prom
+    Pushgw --> Prom
+    ZbxAgent --> ZbxServer
+
+    Prom <--> ML
+    Prom --> AM
+    AM --> ML
+
+    Prom --> Grafana
+    ZbxServer --> Grafana
+    ML --> Portal
+    Prom --> Portal

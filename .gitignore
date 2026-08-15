@@ -1,7 +1,37 @@
+# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
-.env
+*$py.class
 
+# Environment & local credentials
+.env
+.env.local
+
+# ML Models & training artifacts
 ml-anomaly/models/*.joblib
 ml-anomaly/models/*.pkl
 ml-anomaly/models/*.h5
+
+# Evidence collection output
+evidence/
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# IDE / Editor folders
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS metadata
+.DS_Store
+Thumbs.db
+
+# Archives & logs
+*.zip
+*.tar.gz
+*.log
