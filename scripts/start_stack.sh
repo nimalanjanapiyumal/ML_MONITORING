@@ -44,6 +44,26 @@ require_command() {
   fi
 }
 
+ensure_docker_daemon() {
+  if ! docker info >/dev/null 2>&1; then
+    echo "[INFO] Docker daemon is not running. Attempting to start service..."
+    if command -v systemctl >/dev/null 2>&1; then
+      sudo systemctl enable --now containerd 2>/dev/null || true
+      sudo systemctl enable --now docker 2>/dev/null || true
+    elif command -v service >/dev/null 2>&1; then
+      sudo service containerd start 2>/dev/null || true
+      sudo service docker start 2>/dev/null || true
+    fi
+    sleep 3
+    if ! docker info >/dev/null 2>&1; then
+      echo "[ERROR] Docker daemon is not running and could not be started automatically." >&2
+      echo "        Please run: sudo systemctl enable --now docker" >&2
+      exit 1
+    fi
+    echo "[OK] Docker daemon started."
+  fi
+}
+
 configure_build_network() {
   if [[ -z "${DOCKER_BUILD_NETWORK:-}" ]]; then
     case "$(uname -s 2>/dev/null || echo unknown)" in
@@ -95,10 +115,10 @@ cleanup_legacy_containers() {
 
   for name in "${names[@]}"; do
     local container_id
-    container_id="$(docker ps -aq --filter "name=^/${name}$")"
+    container_id="$(docker ps -aq --filter "name=^/${name}$" 2>/dev/null || true)"
     if [[ -n "$container_id" ]]; then
       echo "Removing stale legacy container: $name"
-      docker rm -f "$container_id" >/dev/null
+      docker rm -f "$container_id" >/dev/null 2>&1 || true
     fi
   done
 }
@@ -156,7 +176,7 @@ check_url() {
 
 require_command docker
 docker compose version >/dev/null
-docker info >/dev/null
+ensure_docker_daemon
 
 ensure_env_file
 configure_build_network

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# install_docker_ubuntu.sh — Install Docker Engine & Compose plugin on Ubuntu
+# install_docker_ubuntu.sh — Install & Start Docker Engine & Compose on Ubuntu
 # =============================================================================
 set -euo pipefail
 
@@ -12,11 +12,24 @@ echo "============================================================"
 sudo dpkg --configure -a || true
 sudo apt-get --fix-broken install -y || true
 
-# If docker compose is already functional, display info and exit early
+# Function to enable and start services
+start_docker_service() {
+  echo "[*] Enabling and starting Docker daemon..."
+  if command -v systemctl >/dev/null 2>&1; then
+    sudo systemctl enable --now containerd || true
+    sudo systemctl enable --now docker || true
+  elif command -v service >/dev/null 2>&1; then
+    sudo service containerd start || true
+    sudo service docker start || true
+  fi
+}
+
+# If docker compose is already functional, ensure service is active and exit early
 if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+  start_docker_service
   echo "[INFO] Docker and Docker Compose plugin are already installed and functional:"
-  echo "       Docker:         $(docker --version)"
-  echo "       Docker Compose: $(docker compose version)"
+  echo "       Docker:         $(docker --version 2>/dev/null || echo 'Installed')"
+  echo "       Docker Compose: $(docker compose version 2>/dev/null || echo 'Installed')"
   sudo usermod -aG docker "$USER" 2>/dev/null || true
   echo "============================================================"
   exit 0
@@ -49,6 +62,8 @@ sudo apt-get install -y -o Dpkg::Options::="--force-overwrite" \
   docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 
 sudo usermod -aG docker "$USER" 2>/dev/null || true
+
+start_docker_service
 
 echo ""
 echo "============================================================"
