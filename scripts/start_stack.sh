@@ -84,12 +84,30 @@ configure_build_network() {
 }
 
 ensure_env_file() {
-  if [[ -f ".env" ]]; then
-    return
+  # Auto-sanitize .env if corrupted or containing conflict markers
+  if [[ -f ".env" ]] && grep -q "<<<<<<" ".env" 2>/dev/null; then
+    echo "[WARN] Corrupted conflict markers detected in .env. Recreating cleanly..."
+    rm -f ".env"
   fi
 
-  cp ".env.example" ".env"
-  echo "Created default .env file."
+  # Auto-sanitize .env.example if conflict markers exist
+  if grep -q "<<<<<<" ".env.example" 2>/dev/null; then
+    sed -i -e '/^<<<<<<</d' -e '/^=======$/d' -e '/^>>>>>>>/d' ".env.example"
+  fi
+
+  if [[ ! -f ".env" ]]; then
+    cp ".env.example" ".env"
+    echo "Created clean .env file."
+  fi
+
+  # Ensure SURICATA_INTERFACE is correctly populated in .env
+  if [[ -n "${SURICATA_INTERFACE:-}" && -f ".env" ]]; then
+    if grep -q "^SURICATA_INTERFACE=" ".env"; then
+      sed -i "s|^SURICATA_INTERFACE=.*|SURICATA_INTERFACE=${SURICATA_INTERFACE}|" ".env"
+    else
+      echo "SURICATA_INTERFACE=${SURICATA_INTERFACE}" >> ".env"
+    fi
+  fi
 }
 
 cleanup_legacy_containers() {
