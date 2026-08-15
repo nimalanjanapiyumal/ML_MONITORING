@@ -10,8 +10,6 @@ RETRAIN="${NHMF_RETRAIN:-0}"
 SKIP_TRAIN="${NHMF_SKIP_TRAIN:-0}"
 CLEANUP_LEGACY="${NHMF_CLEANUP_LEGACY:-1}"
 
-<<<<<<< HEAD
-=======
 # Auto-detect network interface if not set
 if [[ -z "${SURICATA_INTERFACE:-}" ]]; then
   DETECTED_IFACE="$(ip route get 8.8.8.8 2>/dev/null | awk '{for(i=1;i<=NF;i++) if ($i=="dev") print $(i+1); exit}' || echo 'eth0')"
@@ -19,8 +17,6 @@ if [[ -z "${SURICATA_INTERFACE:-}" ]]; then
   echo "[INFO] Auto-detected SURICATA_INTERFACE=${SURICATA_INTERFACE}"
 fi
 
-
->>>>>>> e6e7d8c (init)
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --retrain)
@@ -93,11 +89,8 @@ cleanup_legacy_containers() {
     nhmf-zabbix-server
     nhmf-zabbix-web
     nhmf-zabbix-agent
-<<<<<<< HEAD
-=======
     nhmf-suricata
     nhmf-suricata-exporter
->>>>>>> e6e7d8c (init)
   )
 
   for name in "${names[@]}"; do
@@ -182,18 +175,6 @@ check_url "Grafana" "http://localhost:3000/api/health" 120 "grafana"
 check_url "ML anomaly API" "http://localhost:8000/health" 90 "ml-anomaly"
 check_url "Operations Portal" "http://localhost:8088" 90 "portal"
 check_url "Zabbix Web" "http://localhost:8080" 180 "zabbix-web"
-<<<<<<< HEAD
-
-echo ""
-echo "Services:"
-echo "Main Portal:   http://localhost:8088"
-echo "Grafana:       http://localhost:3000  admin/admin123"
-echo "ML Dashboard:  http://localhost:3000/d/nhmf-ml/ml-anomaly-detection-dashboard"
-echo "Prometheus:    http://localhost:9090"
-echo "Alertmanager:  http://localhost:9093"
-echo "ML API:        http://localhost:8000/health"
-echo "Zabbix:        http://localhost:8080  Admin/zabbix"
-=======
 check_url "Suricata Exporter" "http://localhost:9517/health" 60 "suricata-exporter"
 
 echo ""
@@ -210,4 +191,3 @@ echo "Zabbix:               http://localhost:8080  Admin/zabbix"
 echo ""
 echo "Network interface monitored by Suricata: ${SURICATA_INTERFACE}"
 echo "To update Suricata rules:  ./scripts/update_suricata_rules.sh"
->>>>>>> e6e7d8c (init)

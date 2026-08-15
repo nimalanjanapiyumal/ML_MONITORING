@@ -79,8 +79,6 @@ services:
     networks:
       - monitoring
 
-<<<<<<< HEAD
-=======
   suricata:
     image: jasonish/suricata:latest
     restart: unless-stopped
@@ -121,7 +119,6 @@ services:
     networks:
       - monitoring
 
->>>>>>> e6e7d8c (init)
   portal:
     image: nginx:1.27-alpine
     restart: unless-stopped
@@ -232,10 +229,7 @@ volumes:
   alertmanager-data:
   grafana-data:
   zabbix-db-data:
-<<<<<<< HEAD
-=======
   suricata-data:
->>>>>>> e6e7d8c (init)
 
 networks:
   monitoring:

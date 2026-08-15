@@ -80,8 +80,6 @@ groups:
         annotations:
           summary: "Critical ML anomaly detected"
           description: "Critical ML evidence persisted for {{ $labels.metric_name }} on {{ $labels.target }}."
-<<<<<<< HEAD
-=======
 
   - name: suricata-ids-alerts
     rules:
@@ -124,4 +122,3 @@ groups:
         annotations:
           summary: "Suricata exporter is unreachable"
           description: "Prometheus cannot scrape suricata-exporter. IDS visibility is degraded."
->>>>>>> e6e7d8c (init)
