@@ -64,7 +64,7 @@ class ZabbixAPI:
             "host.get",
             {
                 "output": ["hostid", "host", "name", "status"],
-                "selectInterfaces": ["ip", "port", "type", "main"],
+                "selectInterfaces": ["interfaceid", "ip", "dns", "useip", "port", "type", "main"],
             },
         )
 
@@ -92,7 +92,44 @@ class ZabbixAPI:
             },
         )
 
-    def create_host(self, hostname: str, ip: str = "127.0.0.1", port: str = "10050") -> dict:
+    def fix_agent_interface(self, target_dns: str = "zabbix-agent") -> dict:
+        """Fixes the default Zabbix server host interface so it connects to the zabbix-agent container via Docker DNS."""
+        hosts = self.call(
+            "host.get",
+            {
+                "filter": {"host": ["Zabbix server"]},
+                "selectInterfaces": ["interfaceid", "ip", "dns", "useip", "port"],
+            },
+        )
+        if not hosts:
+            hosts = self.get_hosts()
+            if not hosts:
+                return {"status": "error", "message": "No hosts found in Zabbix"}
+
+        host = hosts[0]
+        interfaces = host.get("interfaces", [])
+        if not interfaces:
+            return {"status": "error", "message": "No interfaces found on host"}
+
+        iface_id = interfaces[0]["interfaceid"]
+        res = self.call(
+            "hostinterface.update",
+            {
+                "interfaceid": iface_id,
+                "dns": target_dns,
+                "useip": 0,
+                "port": "10050",
+            },
+        )
+        return {
+            "status": "ok",
+            "host": host.get("name", "Zabbix server"),
+            "interfaceid": iface_id,
+            "dns": target_dns,
+            "useip": 0,
+        }
+
+    def create_host(self, hostname: str, dns: str = "zabbix-agent", port: str = "10050") -> dict:
         groups = self.get_host_groups()
         group_id = groups[0]["groupid"] if groups else "2"
         templates = self.get_templates("Linux")
@@ -106,9 +143,9 @@ class ZabbixAPI:
                     {
                         "type": 1,
                         "main": 1,
-                        "useip": 1,
-                        "ip": ip,
-                        "dns": "",
+                        "useip": 0,
+                        "ip": "127.0.0.1",
+                        "dns": dns,
                         "port": port,
                     }
                 ],
@@ -123,9 +160,9 @@ def main():
     parser.add_argument("--url", default=DEFAULT_ZABBIX_URL, help="Zabbix JSON-RPC API endpoint")
     parser.add_argument("--user", default=DEFAULT_USER, help="Zabbix username")
     parser.add_argument("--password", default=DEFAULT_PASSWORD, help="Zabbix password")
-    parser.add_argument("action", choices=["status", "hosts", "problems", "templates", "setup-host"], help="Action to execute")
+    parser.add_argument("action", choices=["status", "hosts", "problems", "templates", "setup-host", "fix-agent"], help="Action to execute")
     parser.add_argument("--host-name", default="NHMF-Docker-Host", help="Host name for setup-host action")
-    parser.add_argument("--host-ip", default="127.0.0.1", help="Host IP for setup-host action")
+    parser.add_argument("--dns", default="zabbix-agent", help="DNS name for host interface")
 
     args = parser.parse_args()
     api = ZabbixAPI(args.url, args.user, args.password)
@@ -146,7 +183,16 @@ def main():
             print(f"  Active Problems:     {len(problems)}")
             for h in hosts:
                 status_str = "ENABLED" if h.get("status") == "0" else "DISABLED"
-                print(f"    - Host: {h.get('name')} [{status_str}] (ID: {h.get('hostid')})")
+                ifaces = h.get("interfaces", [])
+                iface_info = f"DNS={ifaces[0].get('dns')} IP={ifaces[0].get('ip')} Port={ifaces[0].get('port')}" if ifaces else "No iface"
+                print(f"    - Host: {h.get('name')} [{status_str}] ({iface_info})")
+
+        elif args.action == "fix-agent":
+            result = api.fix_agent_interface(args.dns)
+            if result.get("status") == "ok":
+                print(f"[OK] Successfully updated host interface for '{result.get('host')}' to connect via DNS '{result.get('dns')}:10050'.")
+            else:
+                print(f"[ERROR] {result.get('message')}")
 
         elif args.action == "hosts":
             hosts = api.get_hosts()
@@ -169,7 +215,7 @@ def main():
             if existing:
                 print(f"[INFO] Host '{args.host_name}' already exists (ID: {existing[0]['hostid']}).")
             else:
-                res = api.create_host(args.host_name, args.host_ip)
+                res = api.create_host(args.host_name, args.dns)
                 print(f"[OK] Created host '{args.host_name}' with ID: {res.get('hostids', [])}")
 
     except Exception as e:

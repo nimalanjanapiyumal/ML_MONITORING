@@ -215,6 +215,12 @@ check_url "Operations Portal" "http://localhost:8088" 90 "portal"
 check_url "Zabbix Web" "http://localhost:8080" 180 "zabbix-web"
 check_url "Suricata Exporter" "http://localhost:9517/health" 60 "suricata-exporter"
 
+if command -v python3 >/dev/null 2>&1; then
+  echo ""
+  echo "Auto-configuring Zabbix agent interface..."
+  python3 "$PROJECT_ROOT/scripts/zabbix_api_manager.py" fix-agent 2>/dev/null || true
+fi
+
 echo ""
 echo "Services:"
 echo "Main Portal:          http://localhost:8088"
