@@ -24,6 +24,13 @@ echo "============================================"
 echo ""
 
 # ---------------------------------------------------------------------------
+# 0. Set Git case insensitivity if in shared folder environment
+# ---------------------------------------------------------------------------
+if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  git config core.ignorecase true 2>/dev/null || true
+fi
+
+# ---------------------------------------------------------------------------
 # 1. .env.example — write clean version directly
 # ---------------------------------------------------------------------------
 info "Writing clean .env.example..."
