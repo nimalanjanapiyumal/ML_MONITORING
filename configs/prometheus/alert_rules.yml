@@ -80,3 +80,48 @@ groups:
         annotations:
           summary: "Critical ML anomaly detected"
           description: "Critical ML evidence persisted for {{ $labels.metric_name }} on {{ $labels.target }}."
+<<<<<<< HEAD
+=======
+
+  - name: suricata-ids-alerts
+    rules:
+      - alert: SuricataHighSeverityAlert
+        expr: increase(suricata_alerts_total{severity="1"}[5m]) > 0
+        for: 0m
+        labels:
+          severity: critical
+          category: ids
+        annotations:
+          summary: "Suricata critical IDS alert fired"
+          description: "Severity-1 Suricata alert detected in the last 5 minutes. Signature: {{ $labels.signature }}. Category: {{ $labels.category }}."
+
+      - alert: SuricataAlertBurst
+        expr: rate(suricata_alerts_total[1m]) * 60 > 50
+        for: 2m
+        labels:
+          severity: warning
+          category: ids
+        annotations:
+          summary: "Suricata alert burst — more than 50 alerts/min"
+          description: "Alert rate exceeded 50/min for 2 consecutive minutes. Possible active attack or ruleset noise. Check signature: {{ $labels.signature }}."
+
+      - alert: SuricataDropRateHigh
+        expr: rate(suricata_drop_packets_total[1m]) * 60 > 100
+        for: 1m
+        labels:
+          severity: warning
+          category: ids
+        annotations:
+          summary: "Suricata packet drop rate is high"
+          description: "Suricata is dropping more than 100 packets/min — performance issue or IPS rule overmatch. Review rule efficiency."
+
+      - alert: SuricataExporterDown
+        expr: up{job="suricata-exporter"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          category: availability
+        annotations:
+          summary: "Suricata exporter is unreachable"
+          description: "Prometheus cannot scrape suricata-exporter. IDS visibility is degraded."
+>>>>>>> e6e7d8c (init)

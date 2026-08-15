@@ -79,6 +79,49 @@ services:
     networks:
       - monitoring
 
+<<<<<<< HEAD
+=======
+  suricata:
+    image: jasonish/suricata:latest
+    restart: unless-stopped
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+      - SYS_NICE
+    environment:
+      SURICATA_INTERFACE: ${SURICATA_INTERFACE:-eth0}
+    command: >
+      -i ${SURICATA_INTERFACE:-eth0}
+      --af-packet
+      -c /etc/suricata/suricata.yaml
+      --init-errors-fatal
+      -v
+    volumes:
+      - ./configs/suricata/suricata.yaml:/etc/suricata/suricata.yaml:ro
+      - ./configs/suricata/rules:/etc/suricata/rules:ro
+      - suricata-data:/var/log/suricata
+
+  suricata-exporter:
+    build:
+      context: ./suricata-exporter
+      network: ${DOCKER_BUILD_NETWORK:-default}
+    restart: unless-stopped
+    environment:
+      EVE_JSON_PATH: /var/log/suricata/eve.json
+      EXPORTER_PORT: "9517"
+      ROLLING_WINDOW_SECONDS: "3600"
+      LOG_LEVEL: "INFO"
+    volumes:
+      - suricata-data:/var/log/suricata:ro
+    ports:
+      - "9517:9517"
+    depends_on:
+      - suricata
+    networks:
+      - monitoring
+
+>>>>>>> e6e7d8c (init)
   portal:
     image: nginx:1.27-alpine
     restart: unless-stopped
@@ -189,6 +232,10 @@ volumes:
   alertmanager-data:
   grafana-data:
   zabbix-db-data:
+<<<<<<< HEAD
+=======
+  suricata-data:
+>>>>>>> e6e7d8c (init)
 
 networks:
   monitoring:

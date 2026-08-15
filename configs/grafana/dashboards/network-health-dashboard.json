@@ -79,6 +79,21 @@
       "tooltip": "Open dedicated ML anomaly detection dashboard",
       "type": "link",
       "url": "/d/nhmf-ml/ml-anomaly-detection-dashboard"
+<<<<<<< HEAD
+=======
+    },
+    {
+      "asDropdown": false,
+      "icon": "shield",
+      "includeVars": false,
+      "keepTime": true,
+      "tags": [],
+      "targetBlank": false,
+      "title": "Suricata IDS",
+      "tooltip": "Open Suricata intrusion detection dashboard",
+      "type": "link",
+      "url": "/d/nhmf-suricata/suricata-ids-dashboard"
+>>>>>>> e6e7d8c (init)
     }
   ],
   "liveNow": false,

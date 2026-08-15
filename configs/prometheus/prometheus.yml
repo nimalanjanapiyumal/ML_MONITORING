@@ -33,6 +33,17 @@ scrape_configs:
     static_configs:
       - targets: ["pushgateway:9091"]
 
+<<<<<<< HEAD
+=======
+  - job_name: "suricata-exporter"
+    scrape_interval: 15s
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["suricata-exporter:9517"]
+        labels:
+          service: "suricata-ids"
+
+>>>>>>> e6e7d8c (init)
   - job_name: "blackbox-icmp"
     metrics_path: /probe
     params:
