@@ -153,6 +153,14 @@ Test-Url -Name "Operations Portal" -Url "http://localhost:8088" -TimeoutSeconds 
 Test-Url -Name "Zabbix Web" -Url "http://localhost:8080" -TimeoutSeconds 180 -ServiceName "zabbix-web"
 Test-Url -Name "Suricata Exporter" -Url "http://localhost:9517/health" -TimeoutSeconds 60 -ServiceName "suricata-exporter"
 
+Write-Host ""
+Write-Host "Reloading Prometheus targets and alert rules..."
+try {
+    Invoke-WebRequest -Uri "http://localhost:9090/-/reload" -Method Post -UseBasicParsing -TimeoutSec 10 | Out-Null
+} catch {
+    Write-Warning "Prometheus configuration reload failed. Restart the prometheus service to apply target changes."
+}
+
 $pythonCommand = Get-Command python3 -ErrorAction SilentlyContinue
 if (-not $pythonCommand) {
     $pythonCommand = Get-Command python -ErrorAction SilentlyContinue
@@ -160,7 +168,7 @@ if (-not $pythonCommand) {
 
 if ($pythonCommand) {
     Write-Host ""
-    Write-Host "Reconciling the four Zabbix monitored servers..."
+    Write-Host "Reconciling the seven Zabbix monitored servers..."
     & $pythonCommand.Path (Join-Path $PSScriptRoot "zabbix_api_manager.py") --wait-seconds 120 setup-demo-hosts
     if ($LASTEXITCODE -ne 0) {
         Write-Warning "Zabbix host reconciliation did not complete. Re-run: python scripts\zabbix_api_manager.py setup-demo-hosts"

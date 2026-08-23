@@ -18,6 +18,12 @@ The objective is to validate that the framework can collect telemetry, show dash
 | T06 | CPU anomaly | Run CPU stress script | CPU graph rises and anomaly score may increase |
 | T07 | Network anomaly | Run latency/packet loss script | Probe duration/loss changes and alert may trigger |
 | T08 | Evidence export | Run evidence script | JSON/log evidence files are saved |
+| T09 | Zabbix single-server outage | Run `zabbix-web-server-outage 210` | Named Web Server row turns red, healthy count changes 7 → 6, native Zabbix trigger appears, then recovers |
+| T10 | Zabbix multi-server degradation | Run `zabbix-multi-server-outage 210` | Web/API/Backup turn red, healthy count is 4, unavailable count is 3/red, fleet alert fires |
+| T11 | Zabbix control-plane outage | Run `zabbix-control-plane-outage 150` | Web/API and Server daemon turn red while agent targets retain independent status |
+| T12 | Suricata sensor-only outage | Run `suricata-sensor-outage 90` | Sensor turns red while exporter remains reachable |
+| T13 | Suricata exporter-only outage | Run `suricata-exporter-outage 150` | Exporter and dashboard visibility turn red while sensor container continues running |
+| T14 | Complete Suricata outage | Run `suricata-full-outage 150` | Sensor and exporter health views turn red and both containers recover automatically |
 
 ## Fault Injection Scenarios
 
@@ -47,6 +53,12 @@ sudo scripts/fault_injection/latency_packetloss.sh eth0 100ms 5% 60
 scripts/fault_injection/target_down_simulation.sh
 ```
 
+### Zabbix and Suricata Scenario Catalogue
+
+```bash
+scripts/fault_injection/demo_scenarios.sh list
+```
+
 ## Evidence Required
 
 - Prometheus targets screenshot
@@ -55,3 +67,5 @@ scripts/fault_injection/target_down_simulation.sh
 - ML API `/results` output
 - Docker container status
 - Exported evidence folder
+- Zabbix seven-server fleet before, during, and after an outage
+- Suricata sensor-only, exporter-only, and complete-outage screenshots

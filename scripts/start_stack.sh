@@ -215,9 +215,17 @@ check_url "Operations Portal" "http://localhost:8088" 90 "portal"
 check_url "Zabbix Web" "http://localhost:8080" 180 "zabbix-web"
 check_url "Suricata Exporter" "http://localhost:9517/health" 60 "suricata-exporter"
 
+if command -v curl >/dev/null 2>&1; then
+  echo ""
+  echo "Reloading Prometheus targets and alert rules..."
+  if ! curl -fsS -X POST "http://localhost:9090/-/reload" >/dev/null; then
+    echo "[WARN] Prometheus configuration reload failed. Re-run: curl -X POST http://localhost:9090/-/reload" >&2
+  fi
+fi
+
 if command -v python3 >/dev/null 2>&1; then
   echo ""
-  echo "Reconciling the four Zabbix monitored servers..."
+  echo "Reconciling the seven Zabbix monitored servers..."
   if ! python3 "$PROJECT_ROOT/scripts/zabbix_api_manager.py" --wait-seconds 120 setup-demo-hosts; then
     echo "[WARN] Zabbix host reconciliation did not complete. Re-run: ./scripts/setup_zabbix.sh setup-demo-hosts" >&2
   fi

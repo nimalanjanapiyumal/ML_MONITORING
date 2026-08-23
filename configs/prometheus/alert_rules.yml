@@ -245,6 +245,26 @@ groups:
           summary: "Zabbix monitored server agent is unreachable"
           description: "The agent endpoint {{ $labels.target }} is not accepting TCP connections on port 10050."
 
+      - alert: ZabbixFleetDegraded
+        expr: count(probe_success{job="blackbox-tcp", target=~"zabbix-agent.*:10050"} == 0) >= 2 and count(probe_success{job="blackbox-tcp", target=~"zabbix-agent.*:10050"} == 0) < 4
+        for: 1m
+        labels:
+          severity: warning
+          category: zabbix
+        annotations:
+          summary: "Multiple Zabbix monitored servers are unavailable"
+          description: "Between two and three of the seven monitored server agents are unreachable. The fleet is degraded."
+
+      - alert: ZabbixFleetCritical
+        expr: count(probe_success{job="blackbox-tcp", target=~"zabbix-agent.*:10050"} == 0) >= 4
+        for: 1m
+        labels:
+          severity: critical
+          category: zabbix
+        annotations:
+          summary: "Zabbix monitored server fleet is critically degraded"
+          description: "Four or more of the seven monitored server agents are unreachable."
+
       - alert: ZabbixWebHighLatency
         expr: probe_duration_seconds{job="blackbox-http", target=~"http://zabbix-web:8080.*"} > 0.5
         for: 2m

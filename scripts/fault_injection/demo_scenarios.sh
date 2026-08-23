@@ -21,15 +21,30 @@ usage() {
   cat <<'EOF'
 Usage: ./scripts/fault_injection/demo_scenarios.sh <scenario> [duration_seconds] [interface]
 
-Availability scenarios (real, automatically restored):
-  suricata-sensor-outage     Stop packet inspection; exporter stays up and reports stale sensor health
-  suricata-exporter-outage   Stop the Suricata metrics exporter
-  zabbix-server-outage       Stop the Zabbix server daemon
-  zabbix-application-outage  Stop the Application Server agent
-  zabbix-database-outage     Stop the Database Server agent
-  zabbix-security-outage     Stop the Security Server agent
-  zabbix-db-outage           Stop the Zabbix MySQL service
-  ml-outage                  Stop the ML anomaly API
+Suricata availability scenarios (real, automatically restored):
+  suricata-sensor-outage       Stop packet inspection only; exporter remains available
+  suricata-exporter-outage     Stop the metrics exporter only; sensor continues inspecting
+  suricata-full-outage         Stop both the IDS sensor and metrics exporter
+
+Zabbix control-plane scenarios (real, automatically restored):
+  zabbix-server-outage         Stop the Zabbix server daemon only
+  zabbix-web-outage            Stop the Zabbix Web UI/API only
+  zabbix-db-outage             Stop the Zabbix MySQL database
+  zabbix-control-plane-outage  Stop the Zabbix server daemon and Web UI/API together
+
+Zabbix monitored-server scenarios (seven independently monitored lab servers):
+  zabbix-core-agent-outage     Stop the Core Monitoring Server agent
+  zabbix-application-outage    Stop the Application Server agent
+  zabbix-database-outage       Stop the Database Server agent
+  zabbix-security-outage       Stop the Security Server agent
+  zabbix-web-server-outage     Stop the dummy Web Server agent
+  zabbix-api-server-outage     Stop the dummy API Server agent
+  zabbix-backup-server-outage  Stop the dummy Backup Server agent
+  zabbix-multi-server-outage   Stop Web, API, and Backup agents together (7 healthy -> 4)
+  zabbix-fleet-outage          Stop all seven monitored server agents
+
+Other availability scenarios:
+  ml-outage                    Stop the ML anomaly API
 
 Suricata detection scenarios (deterministic synthetic EVE records):
   suricata-scan              TCP SYN port-scan signature
@@ -44,8 +59,11 @@ Resource scenarios:
   latency                    100 ms delay and 5% packet loss (third argument is interface)
 
 Examples:
-  ./scripts/fault_injection/demo_scenarios.sh suricata-sensor-outage 90
-  ./scripts/fault_injection/demo_scenarios.sh zabbix-application-outage 120
+  ./scripts/fault_injection/demo_scenarios.sh suricata-sensor-outage 150
+  ./scripts/fault_injection/demo_scenarios.sh suricata-full-outage 150
+  ./scripts/fault_injection/demo_scenarios.sh zabbix-server-outage 210
+  ./scripts/fault_injection/demo_scenarios.sh zabbix-web-server-outage 210
+  ./scripts/fault_injection/demo_scenarios.sh zabbix-multi-server-outage 210
   ./scripts/fault_injection/demo_scenarios.sh suricata-scan
   sudo ./scripts/fault_injection/demo_scenarios.sh latency 90 eth0
 EOF
@@ -77,6 +95,28 @@ run_outage() {
   restore_service
   trap - EXIT INT TERM
   echo -e "${GREEN}[RECOVERED] ${service} was restarted. Confirm the dashboard returns to green.${NC}"
+}
+
+run_multi_outage() {
+  local observation="$1"
+  shift
+  local services=("$@")
+  validate_duration
+
+  restore_services() {
+    echo -e "\n${YELLOW}[RECOVERY] Starting ${services[*]}...${NC}"
+    docker compose start "${services[@]}" >/dev/null 2>&1 || true
+  }
+  trap restore_services EXIT INT TERM
+
+  echo -e "${BLUE}[SCENARIO] Stopping ${services[*]} for ${DURATION} seconds.${NC}"
+  echo "Expected observation: ${observation}"
+  docker compose stop "${services[@]}"
+  echo -e "${RED}[OUTAGE ACTIVE] Open the relevant dashboard and observe each named target.${NC}"
+  sleep "$DURATION"
+  restore_services
+  trap - EXIT INT TERM
+  echo -e "${GREEN}[RECOVERED] All scenario services were restarted. Confirm every target returns to green.${NC}"
 }
 
 run_suricata_demo() {
@@ -111,17 +151,49 @@ case "$SCENARIO" in
   suricata-exporter-outage)
     run_outage "suricata-exporter" "Suricata Sensor Health becomes red immediately after the failed scrape; SuricataExporterDown fires after 2 minutes."
     ;;
+  suricata-full-outage)
+    run_multi_outage "Both Suricata sensor and exporter dashboard health become red; SuricataExporterDown confirms complete IDS visibility loss." \
+      "suricata" "suricata-exporter"
+    ;;
   zabbix-server-outage)
     run_outage "zabbix-server" "Zabbix Server Daemon becomes red and the TCP/10051 availability series drops to 0."
     ;;
+  zabbix-web-outage)
+    run_outage "zabbix-web" "Zabbix Web UI/API becomes red while the server daemon, database, and agent TCP endpoints remain independently visible."
+    ;;
+  zabbix-control-plane-outage)
+    run_multi_outage "Zabbix Web UI/API and Server Daemon become red together while MySQL and agent endpoints show their independent state." \
+      "zabbix-server" "zabbix-web"
+    ;;
+  zabbix-core-agent-outage)
+    run_outage "zabbix-agent" "Core Monitoring Server becomes red; Healthy Zabbix Servers changes from 7 to 6."
+    ;;
   zabbix-application-outage)
-    run_outage "zabbix-agent-application" "Application Server becomes red; Healthy Zabbix Servers changes from 4 to 3."
+    run_outage "zabbix-agent-application" "Application Server becomes red; Healthy Zabbix Servers changes from 7 to 6."
     ;;
   zabbix-database-outage)
-    run_outage "zabbix-agent-database" "Database Server becomes red; Healthy Zabbix Servers changes from 4 to 3."
+    run_outage "zabbix-agent-database" "Database Server becomes red; Healthy Zabbix Servers changes from 7 to 6."
     ;;
   zabbix-security-outage)
-    run_outage "zabbix-agent-security" "Security Server becomes red; Healthy Zabbix Servers changes from 4 to 3."
+    run_outage "zabbix-agent-security" "Security Server becomes red; Healthy Zabbix Servers changes from 7 to 6."
+    ;;
+  zabbix-web-server-outage)
+    run_outage "zabbix-agent-web" "Web Server becomes red; Healthy Zabbix Servers changes from 7 to 6."
+    ;;
+  zabbix-api-server-outage)
+    run_outage "zabbix-agent-api" "API Server becomes red; Healthy Zabbix Servers changes from 7 to 6."
+    ;;
+  zabbix-backup-server-outage)
+    run_outage "zabbix-agent-backup" "Backup Server becomes red; Healthy Zabbix Servers changes from 7 to 6."
+    ;;
+  zabbix-multi-server-outage)
+    run_multi_outage "Web, API, and Backup servers become red; healthy count drops from 7 to 4 and unavailable count crosses the red boundary." \
+      "zabbix-agent-web" "zabbix-agent-api" "zabbix-agent-backup"
+    ;;
+  zabbix-fleet-outage)
+    run_multi_outage "All seven server rows become red and the healthy count reaches 0, demonstrating complete monitored-fleet loss." \
+      "zabbix-agent" "zabbix-agent-application" "zabbix-agent-database" "zabbix-agent-security" \
+      "zabbix-agent-web" "zabbix-agent-api" "zabbix-agent-backup"
     ;;
   zabbix-db-outage)
     run_outage "zabbix-db" "Zabbix MySQL Database becomes red; Zabbix Web and Server may also degrade until MySQL recovers."

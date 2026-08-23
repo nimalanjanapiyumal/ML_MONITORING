@@ -283,7 +283,7 @@ Grafana is pre-provisioned with 4 dashboards located in the **NHMF** folder:
 3. **Suricata IDS Dashboard** (`/d/nhmf-suricata/`):
    - 20-panel threat monitoring view: Stacked alert rate timeline, top 15 signatures, protocol distribution, flow throughput, DNS record anomalies, TLS JA3 hashes, and HTTP status codes.
 4. **Zabbix Infrastructure & Host Dashboard** (`/d/nhmf-zabbix/`):
-   - Zabbix Web latency, Server and MySQL TCP health, CPU/Memory/Disk/Network metrics, active alerts, and a four-server availability timeline.
+   - Zabbix Web latency, Server and MySQL TCP health, CPU/Memory/Disk/Network metrics, active alerts, and a seven-server availability timeline.
 
 ---
 
@@ -291,7 +291,7 @@ Grafana is pre-provisioned with 4 dashboards located in the **NHMF** folder:
 
 Zabbix 7.0 LTS is fully integrated with automated JSON-RPC API tooling:
 
-After Zabbix Web becomes ready, the startup script uses the host Python runtime to idempotently register the core `Zabbix server` plus `NHMF Application Server`, `NHMF Database Server`, and `NHMF Security Server` with the Linux agent template. This avoids pulling an extra utility image during startup.
+After Zabbix Web becomes ready, the startup script uses the host Python runtime to idempotently register seven independent lab servers: core, application, database, security, web, API, and backup. Each receives its own agent interface, the Linux agent template, and membership in the `NHMF Monitored Servers` group. The three additional dummy servers reuse the existing Zabbix agent image, avoiding new image families.
 
 ### Managing Zabbix via CLI
 
@@ -302,10 +302,10 @@ After Zabbix Web becomes ready, the startup script uses the host Python runtime 
 # Auto-register / link host with Linux Agent template
 ./scripts/setup_zabbix.sh setup-host --host-name "NHMF-Docker-Host"
 
-# Reconcile all four bundled demonstration hosts and Docker DNS interfaces
+# Reconcile all seven bundled demonstration hosts and Docker DNS interfaces
 ./scripts/setup_zabbix.sh setup-demo-hosts
 
-# Display native agent availability and agent.ping state for all four servers
+# Display native agent availability and agent.ping state for all seven servers
 ./scripts/setup_zabbix.sh status
 
 # Inspect current active problem triggers
@@ -354,8 +354,14 @@ sudo ./scripts/fault_injection/latency_packetloss.sh eth0 100ms 5% 60
 # Stop the Suricata sensor for 90 seconds and restore it automatically
 ./scripts/fault_injection/demo_scenarios.sh suricata-sensor-outage 90
 
-# Stop one Zabbix-monitored server for 150 seconds
-./scripts/fault_injection/demo_scenarios.sh zabbix-application-outage 150
+# Stop one Zabbix-monitored server long enough for the native 3-minute trigger
+./scripts/fault_injection/demo_scenarios.sh zabbix-application-outage 210
+
+# Degrade three dummy servers together (healthy 7 -> 4)
+./scripts/fault_injection/demo_scenarios.sh zabbix-multi-server-outage 210
+
+# Demonstrate a complete Suricata sensor and exporter outage
+./scripts/fault_injection/demo_scenarios.sh suricata-full-outage 150
 ```
 
 The complete expected-value and color-transition matrix is in [docs/Demo_Scenarios.md](docs/Demo_Scenarios.md).

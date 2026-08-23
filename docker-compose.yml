@@ -298,6 +298,54 @@ services:
     networks:
       - monitoring
 
+  zabbix-agent-web:
+    image: zabbix/zabbix-agent:alpine-7.0-latest
+    restart: unless-stopped
+    environment:
+      ZBX_SERVER_HOST: zabbix-server
+      ZBX_SERVER_PORT: 10051
+      ZBX_PASSIVE_ALLOW: "true"
+      ZBX_PASSIVESERVERS: zabbix-server
+      ZBX_ACTIVE_ALLOW: "true"
+      ZBX_ACTIVESERVERS: zabbix-server:10051
+      ZBX_HOSTNAME: "NHMF Web Server"
+    depends_on:
+      - zabbix-server
+    networks:
+      - monitoring
+
+  zabbix-agent-api:
+    image: zabbix/zabbix-agent:alpine-7.0-latest
+    restart: unless-stopped
+    environment:
+      ZBX_SERVER_HOST: zabbix-server
+      ZBX_SERVER_PORT: 10051
+      ZBX_PASSIVE_ALLOW: "true"
+      ZBX_PASSIVESERVERS: zabbix-server
+      ZBX_ACTIVE_ALLOW: "true"
+      ZBX_ACTIVESERVERS: zabbix-server:10051
+      ZBX_HOSTNAME: "NHMF API Server"
+    depends_on:
+      - zabbix-server
+    networks:
+      - monitoring
+
+  zabbix-agent-backup:
+    image: zabbix/zabbix-agent:alpine-7.0-latest
+    restart: unless-stopped
+    environment:
+      ZBX_SERVER_HOST: zabbix-server
+      ZBX_SERVER_PORT: 10051
+      ZBX_PASSIVE_ALLOW: "true"
+      ZBX_PASSIVESERVERS: zabbix-server
+      ZBX_ACTIVE_ALLOW: "true"
+      ZBX_ACTIVESERVERS: zabbix-server:10051
+      ZBX_HOSTNAME: "NHMF Backup Server"
+    depends_on:
+      - zabbix-server
+    networks:
+      - monitoring
+
 volumes:
   prometheus-data:
   alertmanager-data:

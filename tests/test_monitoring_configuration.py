@@ -41,13 +41,19 @@ def test_zabbix_demo_servers_are_deployed_and_probed():
         "zabbix-agent-application",
         "zabbix-agent-database",
         "zabbix-agent-security",
+        "zabbix-agent-web",
+        "zabbix-agent-api",
+        "zabbix-agent-backup",
     }
     assert expected_agents <= services.keys()
+    manager = load_module("scripts/zabbix_api_manager.py", "zabbix_fleet_definition_test")
+    assert {host["dns"] for host in manager.DEMO_HOSTS} == expected_agents
     assert "zabbix-provisioner" not in services
     assert "suricata-demo-generator" not in services
 
     start_source = (PROJECT_ROOT / "scripts" / "start_stack.sh").read_text(encoding="utf-8")
     assert "setup-demo-hosts" in start_source
+    assert "http://localhost:9090/-/reload" in start_source
     demo_source = (PROJECT_ROOT / "scripts" / "fault_injection" / "demo_scenarios.sh").read_text(
         encoding="utf-8"
     )
@@ -70,6 +76,9 @@ def test_zabbix_demo_servers_are_deployed_and_probed():
         "zabbix-agent-application:10050",
         "zabbix-agent-database:10050",
         "zabbix-agent-security:10050",
+        "zabbix-agent-web:10050",
+        "zabbix-agent-api:10050",
+        "zabbix-agent-backup:10050",
     } <= tcp_targets
 
 
@@ -135,14 +144,33 @@ def test_zabbix_dashboard_never_defaults_missing_services_to_online():
     assert panel_by_title(dashboard, "Healthy Zabbix Servers")["targets"][0]["expr"].startswith("count(probe_success")
     all_targets = panel_by_title(dashboard, "All Zabbix Targets — Health Timeline")
     assert all_targets["type"] == "state-timeline"
-    assert len(all_targets["targets"]) == 7
+    assert len(all_targets["targets"]) == 10
     fleet = panel_by_title(dashboard, "Monitored Server Availability Timeline")
     assert {target["legendFormat"] for target in fleet["targets"]} == {
         "Core Monitoring Server",
         "Application Server",
         "Database Server",
         "Security Server",
+        "Web Server",
+        "API Server",
+        "Backup Server",
     }
+    assert panel_by_title(dashboard, "Healthy Zabbix Servers")["fieldConfig"]["defaults"]["max"] == 7
+    assert panel_by_title(dashboard, "Unavailable Zabbix Servers")["fieldConfig"]["defaults"]["max"] == 7
+    healthy_steps = panel_by_title(dashboard, "Healthy Zabbix Servers")["fieldConfig"]["defaults"]["thresholds"]["steps"]
+    unavailable_steps = panel_by_title(dashboard, "Unavailable Zabbix Servers")["fieldConfig"]["defaults"]["thresholds"]["steps"]
+    assert [(step["color"], step["value"]) for step in healthy_steps] == [
+        ("red", None),
+        ("orange", 5),
+        ("yellow", 6),
+        ("green", 7),
+    ]
+    assert [(step["color"], step["value"]) for step in unavailable_steps] == [
+        ("green", None),
+        ("yellow", 1),
+        ("orange", 2),
+        ("red", 3),
+    ]
 
 
 def test_outage_alerts_and_demo_scenarios_cover_suricata_and_zabbix():
@@ -159,16 +187,27 @@ def test_outage_alerts_and_demo_scenarios_cover_suricata_and_zabbix():
         "ZabbixServerUnreachable",
         "ZabbixDatabaseUnreachable",
         "ZabbixAgentUnreachable",
+        "ZabbixFleetDegraded",
+        "ZabbixFleetCritical",
     } <= alert_names
 
     demo_source = (PROJECT_ROOT / "scripts" / "fault_injection" / "demo_scenarios.sh").read_text(encoding="utf-8")
     for scenario in (
         "suricata-sensor-outage",
         "suricata-exporter-outage",
+        "suricata-full-outage",
         "zabbix-server-outage",
+        "zabbix-web-outage",
+        "zabbix-control-plane-outage",
+        "zabbix-core-agent-outage",
         "zabbix-application-outage",
         "zabbix-database-outage",
         "zabbix-security-outage",
+        "zabbix-web-server-outage",
+        "zabbix-api-server-outage",
+        "zabbix-backup-server-outage",
+        "zabbix-multi-server-outage",
+        "zabbix-fleet-outage",
     ):
         assert scenario in demo_source
 

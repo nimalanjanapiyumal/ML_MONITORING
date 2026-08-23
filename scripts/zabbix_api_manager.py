@@ -22,6 +22,9 @@ DEMO_HOSTS = (
     {"hostname": "NHMF Application Server", "dns": "zabbix-agent-application", "role": "Application tier"},
     {"hostname": "NHMF Database Server", "dns": "zabbix-agent-database", "role": "Database tier"},
     {"hostname": "NHMF Security Server", "dns": "zabbix-agent-security", "role": "Suricata/security tier"},
+    {"hostname": "NHMF Web Server", "dns": "zabbix-agent-web", "role": "Web/frontend tier"},
+    {"hostname": "NHMF API Server", "dns": "zabbix-agent-api", "role": "API/service tier"},
+    {"hostname": "NHMF Backup Server", "dns": "zabbix-agent-backup", "role": "Backup/recovery tier"},
 )
 DEMO_GROUP_NAME = "NHMF Monitored Servers"
 

@@ -16,7 +16,7 @@ The framework follows a modular, layered architecture for observability, securit
    - **Suricata IDS** (`host` network mode): Passive deep packet inspection, protocol parsing (HTTP, DNS, TLS/JA3, SSH), and ET Open + custom threat signature matching
    - **Suricata Exporter** (`:9517`): Lightweight Python bridge tailing `eve.json` and exposing Prometheus metrics
    - **Pushgateway** (`:9091`): Ingestion for ephemeral jobs and synthetic metrics
-   - **Zabbix Agent** (`:10050`): Agent-based infrastructure monitoring
+   - **Seven Zabbix Agents** (`:10050`): Independently monitored core, application, database, security, web, API, and backup server roles
 
 3. **Time-Series Storage & Rule Engine**:
    - **Prometheus TSDB** (`:9090`): Metric scraping, 15-day retention, PromQL querying

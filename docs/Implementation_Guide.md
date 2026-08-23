@@ -71,7 +71,7 @@ http://localhost:8000/results
 http://localhost:8000/metrics
 ```
 
-## Step 7: Optional Zabbix
+## Step 7: Zabbix Seven-Server Fleet
 
 Open:
 
@@ -85,4 +85,11 @@ Login:
 Admin / zabbix
 ```
 
-Add monitored hosts and templates manually through the Zabbix web interface.
+The startup script automatically registers core, application, database, security, web, API, and backup server roles. To reconcile them again and display native agent health:
+
+```bash
+./scripts/setup_zabbix.sh setup-demo-hosts
+./scripts/setup_zabbix.sh status
+```
+
+In Zabbix, open **Data collection → Hosts** and filter by **NHMF Monitored Servers**.

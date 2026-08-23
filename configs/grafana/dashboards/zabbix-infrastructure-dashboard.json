@@ -12,7 +12,7 @@
       }
     ]
   },
-  "description": "Zabbix infrastructure and monitored-server dashboard — Web UI, Server daemon, MySQL, four registered agent hosts, latency, availability, and host resources.",
+  "description": "Zabbix infrastructure and monitored-server dashboard — Web UI, Server daemon, MySQL, seven independently monitored agent hosts, latency, availability, and host resources.",
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
@@ -492,6 +492,21 @@
           "expr": "probe_success{job=\"blackbox-tcp\", target=\"zabbix-agent-security:10050\"}",
           "legendFormat": "Security Server Agent :10050",
           "refId": "G"
+        },
+        {
+          "expr": "probe_success{job=\"blackbox-tcp\", target=\"zabbix-agent-web:10050\"}",
+          "legendFormat": "Web Server Agent :10050",
+          "refId": "H"
+        },
+        {
+          "expr": "probe_success{job=\"blackbox-tcp\", target=\"zabbix-agent-api:10050\"}",
+          "legendFormat": "API Server Agent :10050",
+          "refId": "I"
+        },
+        {
+          "expr": "probe_success{job=\"blackbox-tcp\", target=\"zabbix-agent-backup:10050\"}",
+          "legendFormat": "Backup Server Agent :10050",
+          "refId": "J"
         }
       ],
       "title": "All Zabbix Targets — Health Timeline",
@@ -767,7 +782,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "description": "TCP availability for the four server agents automatically registered in Zabbix: core, application, database, and security.",
+      "description": "TCP availability for seven server agents automatically registered in Zabbix: core, application, database, security, web, API, and backup.",
       "fieldConfig": {
         "defaults": {
           "mappings": [
@@ -820,6 +835,21 @@
           "expr": "probe_success{job=\"blackbox-tcp\", target=\"zabbix-agent-security:10050\"}",
           "legendFormat": "Security Server",
           "refId": "D"
+        },
+        {
+          "expr": "probe_success{job=\"blackbox-tcp\", target=\"zabbix-agent-web:10050\"}",
+          "legendFormat": "Web Server",
+          "refId": "E"
+        },
+        {
+          "expr": "probe_success{job=\"blackbox-tcp\", target=\"zabbix-agent-api:10050\"}",
+          "legendFormat": "API Server",
+          "refId": "F"
+        },
+        {
+          "expr": "probe_success{job=\"blackbox-tcp\", target=\"zabbix-agent-backup:10050\"}",
+          "legendFormat": "Backup Server",
+          "refId": "G"
         }
       ],
       "title": "Monitored Server Availability Timeline",
@@ -831,15 +861,15 @@
         "defaults": {
           "color": { "mode": "thresholds" },
           "mappings": [],
-          "max": 4,
+          "max": 7,
           "min": 0,
           "thresholds": {
             "mode": "absolute",
             "steps": [
               { "color": "red", "value": null },
-              { "color": "orange", "value": 2 },
-              { "color": "yellow", "value": 3 },
-              { "color": "green", "value": 4 }
+              { "color": "orange", "value": 5 },
+              { "color": "yellow", "value": 6 },
+              { "color": "green", "value": 7 }
             ]
           },
           "unit": "short"
@@ -859,7 +889,7 @@
       "targets": [
         {
           "expr": "count(probe_success{job=\"blackbox-tcp\", target=~\"zabbix-agent.*:10050\"} == 1) or vector(0)",
-          "legendFormat": "Healthy / 4",
+          "legendFormat": "Healthy / 7",
           "refId": "A"
         }
       ],
@@ -872,7 +902,7 @@
         "defaults": {
           "color": { "mode": "thresholds" },
           "mappings": [],
-          "max": 4,
+          "max": 7,
           "min": 0,
           "thresholds": {
             "mode": "absolute",
@@ -900,7 +930,7 @@
       "targets": [
         {
           "expr": "count(probe_success{job=\"blackbox-tcp\", target=~\"zabbix-agent.*:10050\"} == 0) or vector(0)",
-          "legendFormat": "Unavailable / 4",
+          "legendFormat": "Unavailable / 7",
           "refId": "A"
         }
       ],

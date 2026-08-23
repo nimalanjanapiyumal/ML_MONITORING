@@ -60,6 +60,9 @@ scrape_configs:
           - zabbix-agent-application
           - zabbix-agent-database
           - zabbix-agent-security
+          - zabbix-agent-web
+          - zabbix-agent-api
+          - zabbix-agent-backup
     relabel_configs:
       - source_labels: [__address__]
         target_label: __param_target
@@ -101,6 +104,9 @@ scrape_configs:
           - zabbix-agent-application:10050
           - zabbix-agent-database:10050
           - zabbix-agent-security:10050
+          - zabbix-agent-web:10050
+          - zabbix-agent-api:10050
+          - zabbix-agent-backup:10050
     relabel_configs:
       - source_labels: [__address__]
         target_label: __param_target
