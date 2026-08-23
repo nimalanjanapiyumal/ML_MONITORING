@@ -11,7 +11,7 @@ Zabbix 7.0 LTS is integrated into the NHMF monitoring stack as an enterprise-gra
 | **Zabbix Web UI** | `http://localhost:8080` | `Admin` / `zabbix` | Web GUI for host management & maps |
 | **Zabbix JSON-RPC API** | `http://localhost:8080/api_jsonrpc.php` | `Admin` / `zabbix` | Automated programmatic control |
 | **Zabbix Server Daemon** | `localhost:10051` | Native protocol | Active/passive polling and trapper engine |
-| **Zabbix Agent** | `localhost:10050` (internal) | Native protocol | OS & Docker metric collector |
+| **Zabbix Agents** | Docker-internal `:10050` | Native protocol | Core, application, database, and security server collectors |
 | **Zabbix MySQL 8 DB** | `localhost:3306` (internal) | `zabbix` / `zabbix` | Relational storage engine |
 
 ---
@@ -23,6 +23,7 @@ A dedicated Grafana dashboard is pre-provisioned at:
 
 Features:
 - Live service status indicators for Zabbix Web, Server Daemon, and MySQL Database.
+- A four-server availability timeline with correct healthy and unavailable counts.
 - HTTP & ICMP response latency breakdown (connect time, PHP-FPM processing, RTT).
 - Host CPU utilization, I/O wait, memory distribution, filesystem space, and network interface throughput.
 - Instant cross-links to the native Zabbix Web UI, Operations Dashboard, ML Dashboard, and Suricata IDS.
@@ -40,6 +41,9 @@ NHMF includes an automated API management suite in `scripts/`:
 # Auto-create / register the host in Zabbix with Linux Agent template
 ./scripts/setup_zabbix.sh setup-host --host-name "NHMF-Docker-Host"
 
+# Idempotently reconcile all four bundled demonstration servers
+./scripts/setup_zabbix.sh setup-demo-hosts
+
 # Inspect current active problems & triggers
 ./scripts/setup_zabbix.sh problems
 
@@ -51,9 +55,11 @@ NHMF includes an automated API management suite in `scripts/`:
 
 ## 4. Prometheus & Alertmanager Integration
 
-Prometheus continuously probes Zabbix infrastructure via the Blackbox Exporter (`blackbox-http` and `blackbox-icmp`).
+Prometheus continuously probes Zabbix infrastructure via the Blackbox Exporter (`blackbox-http`, `blackbox-icmp`, and `blackbox-tcp`).
 
 Alert rules in `configs/prometheus/alert_rules.yml`:
 - `ZabbixWebDown`: Fires if Zabbix Web UI on port 8080 is unreachable for > 2m.
 - `ZabbixServerUnreachable`: Fires if Zabbix Server daemon is down for > 2m.
+- `ZabbixDatabaseUnreachable`: Fires if MySQL port 3306 is unreachable for > 2m.
+- `ZabbixAgentUnreachable`: Fires when any registered demo server agent is unreachable for > 2m.
 - `ZabbixWebHighLatency`: Fires if Web UI response latency exceeds 500ms for > 2m.

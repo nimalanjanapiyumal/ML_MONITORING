@@ -1,0 +1,52 @@
+# NHMF Demonstration Scenarios
+
+The demonstration suite provides repeatable evidence for healthy, watch, warning, and risk states. Availability scenarios stop only the named lab container, keep a recovery trap active, and restart it after the selected duration. IDS signature scenarios write deterministic synthetic EVE records through the `demo` Compose profile, avoiding dependence on loopback routing or an external scan target.
+
+## Visual state policy
+
+| State | Color | Meaning |
+|---|---|---|
+| Healthy | Green | Metric is within the expected operating range or the service is reachable. |
+| Watch | Yellow | Early degradation is visible and should be observed. |
+| Warning | Orange | The validated warning boundary has been crossed. |
+| Risk / Critical | Red | The service is unavailable or the critical boundary has been crossed. |
+
+The shared numeric boundaries are:
+
+- CPU, memory, and disk: green below 70%, yellow from 70%, orange from 85%, red from 95%.
+- ICMP/HTTP latency: green below 150 ms, yellow from 150 ms, orange from 200 ms, red from 500 ms.
+- ML anomaly score: green below 0.50, yellow from 0.50, orange from 0.65, red from 0.85.
+- Availability: `1` is healthy/green and `0` is risk/red.
+
+## Scenario matrix
+
+Run `./scripts/fault_injection/demo_scenarios.sh list` to print the same list at the command line.
+
+| Scenario | Command | Expected evidence |
+|---|---|---|
+| Suricata sensor outage | `./scripts/fault_injection/demo_scenarios.sh suricata-sensor-outage 90` | Sensor freshness becomes `0`, Sensor Health turns red, and `SuricataSensorDown` fires. The exporter remains scrapeable, proving sensor and exporter health are evaluated separately. |
+| Suricata exporter outage | `./scripts/fault_injection/demo_scenarios.sh suricata-exporter-outage 150` | Prometheus scrape status becomes `0`, Sensor Health turns red, and `SuricataExporterDown` fires. |
+| Zabbix daemon outage | `./scripts/fault_injection/demo_scenarios.sh zabbix-server-outage 150` | TCP/10051 probe becomes `0`; Zabbix Server Daemon and component timeline turn red. |
+| Zabbix Application Server outage | `./scripts/fault_injection/demo_scenarios.sh zabbix-application-outage 150` | Application agent becomes red; healthy server count changes from 4 to 3. |
+| Zabbix Database Server outage | `./scripts/fault_injection/demo_scenarios.sh zabbix-database-outage 150` | Database agent becomes red; healthy server count changes from 4 to 3. |
+| Zabbix Security Server outage | `./scripts/fault_injection/demo_scenarios.sh zabbix-security-outage 150` | Security agent becomes red; healthy server count changes from 4 to 3. |
+| Zabbix MySQL outage | `./scripts/fault_injection/demo_scenarios.sh zabbix-db-outage 150` | TCP/3306 probe and MySQL status turn red; dependent Zabbix components may degrade. |
+| ML service outage | `./scripts/fault_injection/demo_scenarios.sh ml-outage 150` | ML scrape target becomes unavailable and `TargetDown` fires. |
+| TCP scan | `./scripts/fault_injection/demo_scenarios.sh suricata-scan` | Demo SID 9000001 appears in the top-signatures table and alert counters rise. |
+| ICMP burst | `./scripts/fault_injection/demo_scenarios.sh suricata-icmp` | Demo SID 9000003 appears and alert/anomaly views are populated. |
+| Cleartext Basic Auth | `./scripts/fault_injection/demo_scenarios.sh suricata-http` | Demo SID 9000008 appears in alert and HTTP views. |
+| C2 port probe | `./scripts/fault_injection/demo_scenarios.sh suricata-c2` | Critical demo SID 9000006 appears and the critical-alert indicator turns red. |
+| All IDS views | `./scripts/fault_injection/demo_scenarios.sh suricata-threats-all` | More than 50 alerts cross the red risk boundary and DNS, TLS, SSH, flow, HTTP, and anomaly panels receive data. |
+| CPU saturation | `./scripts/fault_injection/demo_scenarios.sh cpu 90` | CPU crosses yellow/orange/red boundaries according to observed utilization. |
+| Memory pressure | `./scripts/fault_injection/demo_scenarios.sh memory 90` | Memory crosses yellow/orange/red boundaries according to observed utilization. |
+| Latency and loss | `sudo ./scripts/fault_injection/demo_scenarios.sh latency 90 eth0` | ICMP latency crosses the 200 ms warning boundary or probe availability degrades. |
+
+## Demonstration procedure
+
+1. Start the stack and run `./scripts/validate_stack.sh` until all checks are healthy.
+2. Open the relevant Grafana dashboard and select a 15-minute time range.
+3. Run one scenario from the matrix. Keep outage scenarios active long enough to satisfy the alert `for` duration.
+4. Capture the color transition, firing alert, and target timeline.
+5. Wait for automatic recovery and confirm the value returns to `1`/green.
+
+These scripts are intended only for the isolated NHMF lab stack. They should not be pointed at systems you do not own or have permission to test.

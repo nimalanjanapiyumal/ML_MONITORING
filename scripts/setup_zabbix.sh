@@ -41,6 +41,6 @@ python3 "$SCRIPT_DIR/zabbix_api_manager.py" \
   --url "$ZABBIX_URL" \
   --user "$ZABBIX_USER" \
   --password "$ZABBIX_PASSWORD" \
-  "$ACTION" "$@"
+  "$ACTION" "${@:2}"
 
 echo "============================================================"

@@ -27,6 +27,7 @@ diagrams/architecture.mmd
 
 docs/Architecture.md
 docs/Development_Methodology.md
+docs/Demo_Scenarios.md
 docs/Evaluation_KPIs.md
 docs/Implementation_Guide.md
 docs/ML_Threshold_Justification.md
@@ -44,6 +45,8 @@ ml-anomaly/unsw_nb15_pipeline.py
 
 scripts/export_evidence.sh
 scripts/fault_injection/cpu_stress.sh
+scripts/fault_injection/demo_scenarios.sh
+scripts/fault_injection/inject_suricata_demo_events.py
 scripts/fault_injection/latency_packetloss.sh
 scripts/fault_injection/memory_stress.sh
 scripts/fault_injection/simulate_network_attacks.sh
@@ -63,6 +66,7 @@ suricata-exporter/exporter.py
 suricata-exporter/requirements.txt
 
 tests/test_feature_engineering.py
+tests/test_monitoring_configuration.py
 tests/test_portal_api.py
 tests/test_unsw_nb15_pipeline.py
 

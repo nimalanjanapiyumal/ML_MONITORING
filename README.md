@@ -34,7 +34,7 @@ The framework operates across 6 integrated functional layers:
                       v                                                                       v
 +-------------------------------------------+                       +-----------------------------------+
 |             Prometheus TSDB               |                       |           Zabbix Stack            |
-|  - Time-Series Telemetry (15-day storage) |                       |  - Server, Web UI, Agent, MySQL   |
+|  - Time-Series Telemetry (15-day storage) |                       |  - Server, Web, MySQL, 4 Agents  |
 |  - Baseline & Threat Alerting Rules       |                       |  - Enterprise Agent Monitoring    |
 +---+-------------------+---------------+---+                       +-----------------------------------+
     |                   |               |
@@ -81,6 +81,7 @@ The framework operates across 6 integrated functional layers:
 | **Pushgateway** | `9091` | `http://localhost:9091/metrics` | None | Batch job and synthetic telemetry ingress |
 | **Zabbix Web** | `8080` | `http://localhost:8080` | `Admin` / `zabbix` | Optional enterprise NMS web interface |
 | **Zabbix Server** | `10051` | `localhost:10051` | Native | Zabbix trapper and poller daemon |
+| **Zabbix Agents** | `10050` | Docker-internal TCP endpoints | Native | Core, application, database, and security demo servers |
 
 ---
 
@@ -128,7 +129,8 @@ The framework operates across 6 integrated functional layers:
 │   ├── Implementation_Guide.md     # Step-by-step deployment guide
 │   ├── ML_Threshold_Justification.md# ML decision boundary justification
 │   ├── README_FOR_SUBMISSION.md    # Academic submission overview
-│   └── Test_Plan.md                # Comprehensive test strategy
+│   ├── Test_Plan.md                # Comprehensive test strategy
+│   └── Demo_Scenarios.md           # Outage, IDS, resource, and recovery demonstrations
 │
 ├── ml-anomaly/                     # Machine Learning engine
 │   ├── Dockerfile                  # Python container build specification
@@ -153,7 +155,9 @@ The framework operates across 6 integrated functional layers:
 │       ├── memory_stress.sh        # Memory allocation generator
 │       ├── latency_packetloss.sh   # Linux netem network degradation
 │       ├── simulate_network_attacks.sh # Safe TCP/ICMP/HTTP threat generator
-│       └── target_down_simulation.sh   # Service failure simulator
+│       ├── inject_suricata_demo_events.py # Deterministic synthetic EVE event generator
+│       ├── target_down_simulation.sh   # Backward-compatible ML outage simulator
+│       └── demo_scenarios.sh           # Complete repeatable demonstration runner
 │
 ├── suricata-exporter/              # Suricata EVE-JSON to Prometheus bridge
 │   ├── Dockerfile                  # Exporter container definition
@@ -279,13 +283,15 @@ Grafana is pre-provisioned with 4 dashboards located in the **NHMF** folder:
 3. **Suricata IDS Dashboard** (`/d/nhmf-suricata/`):
    - 20-panel threat monitoring view: Stacked alert rate timeline, top 15 signatures, protocol distribution, flow throughput, DNS record anomalies, TLS JA3 hashes, and HTTP status codes.
 4. **Zabbix Infrastructure & Host Dashboard** (`/d/nhmf-zabbix/`):
-   - Comprehensive infrastructure monitoring: Zabbix Web response latency breakdown (connect/PHP-FPM time), Server ping RTT, MySQL DB status, CPU/Memory/Disk/Network metrics, and active alert counters.
+   - Zabbix Web latency, Server and MySQL TCP health, CPU/Memory/Disk/Network metrics, active alerts, and a four-server availability timeline.
 
 ---
 
 ## Zabbix Enterprise NMS & API Automation
 
 Zabbix 7.0 LTS is fully integrated with automated JSON-RPC API tooling:
+
+On first startup, `zabbix-provisioner` idempotently registers the core `Zabbix server` plus `NHMF Application Server`, `NHMF Database Server`, and `NHMF Security Server` with the Linux agent template.
 
 ### Managing Zabbix via CLI
 
@@ -295,6 +301,9 @@ Zabbix 7.0 LTS is fully integrated with automated JSON-RPC API tooling:
 
 # Auto-register / link host with Linux Agent template
 ./scripts/setup_zabbix.sh setup-host --host-name "NHMF-Docker-Host"
+
+# Reconcile all four bundled demonstration hosts and Docker DNS interfaces
+./scripts/setup_zabbix.sh setup-demo-hosts
 
 # Inspect current active problem triggers
 ./scripts/setup_zabbix.sh problems
@@ -312,16 +321,18 @@ Zabbix 7.0 LTS is fully integrated with automated JSON-RPC API tooling:
 
 Test alert triggers, ML reaction, and dashboard response using the built-in simulation suite:
 
-### 1. Simulate Network Attacks & Security Events
-Generates controlled TCP SYN scans, ICMP bursts, HTTP cleartext auth, and C2 probes to trigger Suricata rules:
+### 1. Demonstrate Suricata Security Events
+The primary demo path appends deterministic synthetic EVE records through a demo-only container, so every dashboard view works without scanning a live target:
 
 ```bash
-# Run all simulated security events
-./scripts/fault_injection/simulate_network_attacks.sh 127.0.0.1 all
+# Populate all alert, flow, DNS, TLS, SSH, and anomaly views
+./scripts/fault_injection/demo_scenarios.sh suricata-threats-all
 
-# Run specific scenario: scan | icmp | http | c2
-./scripts/fault_injection/simulate_network_attacks.sh 127.0.0.1 scan
+# Populate one signature case: scan | icmp | http | c2
+./scripts/fault_injection/demo_scenarios.sh suricata-scan
 ```
+
+For a real packet-capture test, `simulate_network_attacks.sh` remains available but must be given an explicitly authorized lab target reachable through the interface Suricata monitors.
 
 ### 2. Simulate Host Stress & Latency
 ```bash
@@ -334,9 +345,17 @@ Generates controlled TCP SYN scans, ICMP bursts, HTTP cleartext auth, and C2 pro
 # Network Latency & Packet Loss (100ms delay, 5% loss on eth0 for 60s)
 sudo ./scripts/fault_injection/latency_packetloss.sh eth0 100ms 5% 60
 
-# Service Downtime Simulation (temporarily halts ML API for 90s)
-./scripts/fault_injection/target_down_simulation.sh
+# List all repeatable dashboard, IDS, resource, and outage scenarios
+./scripts/fault_injection/demo_scenarios.sh list
+
+# Stop the Suricata sensor for 90 seconds and restore it automatically
+./scripts/fault_injection/demo_scenarios.sh suricata-sensor-outage 90
+
+# Stop one Zabbix-monitored server for 150 seconds
+./scripts/fault_injection/demo_scenarios.sh zabbix-application-outage 150
 ```
+
+The complete expected-value and color-transition matrix is in [docs/Demo_Scenarios.md](docs/Demo_Scenarios.md).
 
 ---
 

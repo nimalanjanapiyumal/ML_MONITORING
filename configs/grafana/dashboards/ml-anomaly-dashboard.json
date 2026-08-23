@@ -183,7 +183,7 @@
             {
               "options": {
                 "0": {
-                  "color": "orange",
+                  "color": "yellow",
                   "text": "Waiting"
                 },
                 "1": {
@@ -198,7 +198,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "orange",
+                "color": "yellow",
                 "value": null
               },
               {
@@ -261,12 +261,16 @@
                 "value": null
               },
               {
-                "color": "orange",
+                "color": "yellow",
                 "value": 120
               },
               {
-                "color": "red",
+                "color": "orange",
                 "value": 300
+              },
+              {
+                "color": "red",
+                "value": 600
               }
             ]
           },
@@ -324,12 +328,16 @@
                 "value": null
               },
               {
-                "color": "orange",
+                "color": "yellow",
                 "value": 1
               },
               {
-                "color": "red",
+                "color": "orange",
                 "value": 2
+              },
+              {
+                "color": "red",
+                "value": 3
               }
             ]
           },
@@ -389,12 +397,16 @@
                 "value": null
               },
               {
-                "color": "orange",
+                "color": "yellow",
                 "value": 0.5
               },
               {
-                "color": "red",
+                "color": "orange",
                 "value": 0.65
+              },
+              {
+                "color": "red",
+                "value": 0.85
               }
             ]
           },
@@ -448,14 +460,6 @@
               {
                 "color": "green",
                 "value": null
-              },
-              {
-                "color": "orange",
-                "value": 1
-              },
-              {
-                "color": "red",
-                "value": 3
               }
             ]
           },
@@ -560,12 +564,16 @@
                 "value": null
               },
               {
-                "color": "orange",
+                "color": "yellow",
                 "value": 0.5
               },
               {
-                "color": "red",
+                "color": "orange",
                 "value": 0.65
+              },
+              {
+                "color": "red",
+                "value": 0.85
               }
             ]
           },
@@ -714,12 +722,16 @@
                 "value": null
               },
               {
-                "color": "orange",
+                "color": "yellow",
                 "value": 0.5
               },
               {
-                "color": "red",
+                "color": "orange",
                 "value": 0.65
+              },
+              {
+                "color": "red",
+                "value": 0.85
               }
             ]
           }

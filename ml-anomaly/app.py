@@ -681,14 +681,14 @@ def portal_overview_payload() -> dict:
         "service_pushgateway": 'max(up{job="pushgateway"})',
         "service_blackbox_icmp": 'max(up{job="blackbox-icmp"})',
         "service_blackbox_http": 'max(up{job="blackbox-http"})',
-        "service_suricata_exporter": 'max(up{job="suricata-exporter"})',
+        "service_suricata_exporter": 'min(up{job="suricata-exporter"} or suricata_sensor_health) or vector(0)',
         "service_zabbix": 'max(probe_success{job="blackbox-http", target=~".*zabbix.*"}) or max(probe_success{job="blackbox-icmp", target=~".*zabbix.*"})',
-        "healthy_targets": "sum(up == 1)",
-        "unavailable_targets": "sum(up == 0)",
+        "healthy_targets": '(count(up{job!~"blackbox-(icmp|http|tcp)"} == 1) or vector(0)) + (count(probe_success{job=~"blackbox-(icmp|http|tcp)"} == 1) or vector(0))',
+        "unavailable_targets": '(count(up{job!~"blackbox-(icmp|http|tcp)"} == 0) or vector(0)) + (count(probe_success{job=~"blackbox-(icmp|http|tcp)"} == 0) or vector(0))',
         "active_alerts": 'count(ALERTS{alertstate="firing"}) or vector(0)',
         "cpu_usage_percent": 'max(100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[2m])) * 100))',
         "memory_usage_percent": "max((1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100)",
-        "icmp_latency_seconds": 'max(probe_duration_seconds{job="blackbox-icmp"})',
+        "icmp_latency_seconds": 'max(probe_duration_seconds{job="blackbox-icmp"} and on(job, instance, target) (probe_success{job="blackbox-icmp"} == 1))',
     }
     with ThreadPoolExecutor(max_workers=10) as executor:
         futures = {
@@ -727,8 +727,10 @@ def portal_overview_payload() -> dict:
         "zabbix": values.get("service_zabbix"),
     }
 
+    system_degraded = bool(STATE["last_error"]) or (values.get("unavailable_targets") or 0) > 0
+
     return {
-        "status": "ok" if not STATE["last_error"] else "degraded",
+        "status": "degraded" if system_degraded else "ok",
         "last_updated": time.time(),
         "last_error": STATE["last_error"],
         "operations": {

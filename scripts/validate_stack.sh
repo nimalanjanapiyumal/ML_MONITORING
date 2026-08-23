@@ -47,7 +47,8 @@ check_url "Alertmanager"          "http://localhost:9093/-/healthy"
 check_url "Grafana"               "http://localhost:3000/api/health"
 check_url "ML Anomaly API"        "http://localhost:8000/health"
 check_url "Operations Portal"     "http://localhost:8088"
-check_url "Suricata Exporter"     "http://localhost:9517/health"
+check_url "Suricata Exporter"     "http://localhost:9517/-/healthy"
+check_url "Suricata Sensor"       "http://localhost:9517/health"
 check_url "Zabbix Web"            "http://localhost:8080"
 
 echo ""
@@ -73,14 +74,15 @@ except Exception as e:
 
 echo ""
 echo "[5] Suricata IDS Metrics Sample:"
-curl -fsS "http://localhost:9517/metrics" 2>/dev/null | grep -E '^suricata_(alerts_total|alerts_last_window|stats_uptime_seconds|flow_bytes_total)' | head -n 10 || echo "Suricata metrics not yet reporting"
+curl -fsS "http://localhost:9517/metrics" 2>/dev/null | grep -E '^suricata_(sensor_health|alerts_total|alerts_last_window|stats_uptime_seconds|stats_kernel_drop_ratio_percent|flow_bytes_total)' | head -n 12 || echo "Suricata metrics not yet reporting"
 
 echo ""
 echo "[6] ML Anomaly Detection State:"
 curl -fsS "http://localhost:8000/results" 2>/dev/null | python3 -c '
 import sys, json
 try:
-    results = json.load(sys.stdin)
+    payload = json.load(sys.stdin)
+    results = payload.get("results", [])
     print(f"Total evaluated telemetry metrics: {len(results)}")
     for r in results[:5]:
         m = r.get("metric_name", "")
@@ -91,6 +93,10 @@ try:
 except Exception as e:
     print("No ML results currently cached.")
 ' 2>/dev/null || echo "Could not query ML results"
+
+echo ""
+echo "[7] Zabbix Registered Server Fleet:"
+python3 "$PROJECT_ROOT/scripts/zabbix_api_manager.py" status 2>/dev/null || echo "Could not query the Zabbix API"
 
 echo ""
 echo "============================================================"

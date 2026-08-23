@@ -55,6 +55,11 @@ scrape_configs:
           - ml-anomaly
           - zabbix-web
           - zabbix-server
+          - zabbix-db
+          - zabbix-agent
+          - zabbix-agent-application
+          - zabbix-agent-database
+          - zabbix-agent-security
     relabel_configs:
       - source_labels: [__address__]
         target_label: __param_target
@@ -76,6 +81,26 @@ scrape_configs:
           - http://portal
           - http://suricata-exporter:9517/health
           - http://zabbix-web:8080
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: target
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
+
+  - job_name: "blackbox-tcp"
+    metrics_path: /probe
+    params:
+      module: [tcp_connect]
+    static_configs:
+      - targets:
+          - zabbix-server:10051
+          - zabbix-db:3306
+          - zabbix-agent:10050
+          - zabbix-agent-application:10050
+          - zabbix-agent-database:10050
+          - zabbix-agent-security:10050
     relabel_configs:
       - source_labels: [__address__]
         target_label: __param_target

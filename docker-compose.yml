@@ -111,6 +111,7 @@ services:
       EVE_JSON_PATH: /var/log/suricata/eve.json
       EXPORTER_PORT: "9517"
       ROLLING_WINDOW_SECONDS: "3600"
+      SENSOR_STALE_AFTER_SECONDS: "30"
       LOG_LEVEL: "INFO"
     volumes:
       - suricata-data:/var/log/suricata:ro
@@ -118,6 +119,24 @@ services:
       - "9517:9517"
     depends_on:
       - suricata
+    networks:
+      - monitoring
+
+  suricata-demo-generator:
+    image: python:3.12-alpine
+    profiles: ["demo"]
+    restart: "no"
+    environment:
+      EVE_JSON_PATH: /var/log/suricata/eve.json
+    entrypoint: ["python", "/app/inject_suricata_demo_events.py"]
+    volumes:
+      - ./scripts/fault_injection/inject_suricata_demo_events.py:/app/inject_suricata_demo_events.py:ro
+      - suricata-data:/var/log/suricata
+    depends_on:
+      suricata:
+        condition: service_started
+      suricata-exporter:
+        condition: service_started
     networks:
       - monitoring
 
@@ -220,6 +239,12 @@ services:
         condition: service_healthy
       zabbix-server:
         condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
     ports:
       - "8080:8080"
     networks:
@@ -238,6 +263,77 @@ services:
       - "10050:10050"
     depends_on:
       - zabbix-server
+    networks:
+      - monitoring
+
+  zabbix-agent-application:
+    image: zabbix/zabbix-agent:alpine-7.0-latest
+    restart: unless-stopped
+    environment:
+      ZBX_SERVER_HOST: zabbix-server
+      ZBX_SERVER_PORT: 10051
+      ZBX_PASSIVE_ALLOW: 0.0.0.0/0
+      ZBX_ACTIVE_ALLOW: zabbix-server
+      ZBX_HOSTNAME: "NHMF Application Server"
+    depends_on:
+      - zabbix-server
+    networks:
+      - monitoring
+
+  zabbix-agent-database:
+    image: zabbix/zabbix-agent:alpine-7.0-latest
+    restart: unless-stopped
+    environment:
+      ZBX_SERVER_HOST: zabbix-server
+      ZBX_SERVER_PORT: 10051
+      ZBX_PASSIVE_ALLOW: 0.0.0.0/0
+      ZBX_ACTIVE_ALLOW: zabbix-server
+      ZBX_HOSTNAME: "NHMF Database Server"
+    depends_on:
+      - zabbix-server
+    networks:
+      - monitoring
+
+  zabbix-agent-security:
+    image: zabbix/zabbix-agent:alpine-7.0-latest
+    restart: unless-stopped
+    environment:
+      ZBX_SERVER_HOST: zabbix-server
+      ZBX_SERVER_PORT: 10051
+      ZBX_PASSIVE_ALLOW: 0.0.0.0/0
+      ZBX_ACTIVE_ALLOW: zabbix-server
+      ZBX_HOSTNAME: "NHMF Security Server"
+    depends_on:
+      - zabbix-server
+    networks:
+      - monitoring
+
+  zabbix-provisioner:
+    image: python:3.12-alpine
+    restart: "no"
+    environment:
+      ZABBIX_URL: http://zabbix-web:8080/api_jsonrpc.php
+      ZABBIX_ADMIN_USER: ${ZABBIX_ADMIN_USER:-Admin}
+      ZABBIX_ADMIN_PASSWORD: ${ZABBIX_ADMIN_PASSWORD:-zabbix}
+    command:
+      - python
+      - /app/zabbix_api_manager.py
+      - --wait-seconds
+      - "180"
+      - setup-demo-hosts
+    volumes:
+      - ./scripts/zabbix_api_manager.py:/app/zabbix_api_manager.py:ro
+    depends_on:
+      zabbix-web:
+        condition: service_healthy
+      zabbix-agent:
+        condition: service_started
+      zabbix-agent-application:
+        condition: service_started
+      zabbix-agent-database:
+        condition: service_started
+      zabbix-agent-security:
+        condition: service_started
     networks:
       - monitoring
 

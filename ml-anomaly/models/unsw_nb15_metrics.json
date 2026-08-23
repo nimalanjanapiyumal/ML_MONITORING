@@ -44,7 +44,7 @@
         "support": 82332.0
       }
     },
-    "roc_auc": 0.9768069131405296,
+    "roc_auc": 0.9768068991297836,
     "false_positive_rate": 0.2830810810810811,
     "false_negative_rate": 0.012176828730256772
   },
@@ -250,7 +250,7 @@
         "support": 82332.0
       }
     },
-    "roc_auc": 0.9593408259392296,
+    "roc_auc": 0.9593408256972775,
     "classes": [
       "Analysis",
       "Backdoor",

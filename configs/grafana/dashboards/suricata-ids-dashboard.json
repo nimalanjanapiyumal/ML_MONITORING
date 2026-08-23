@@ -83,7 +83,7 @@
         "defaults": {
           "color": { "mode": "thresholds" },
           "mappings": [
-            { "options": { "0": { "color": "red", "text": "Down" }, "1": { "color": "green", "text": "Up" } }, "type": "value" }
+            { "options": { "0": { "color": "red", "text": "RISK / STOPPED" }, "1": { "color": "green", "text": "HEALTHY" } }, "type": "value" }
           ],
           "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 1 } ] },
           "unit": "short"
@@ -95,9 +95,9 @@
       "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "horizontal", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "value_and_name" },
       "pluginVersion": "11.2.0",
       "targets": [
-        { "expr": "up{job=\"suricata-exporter\"}", "legendFormat": "Suricata Exporter", "refId": "A" }
+        { "expr": "min(up{job=\"suricata-exporter\"} or suricata_sensor_health) or vector(0)", "legendFormat": "Suricata Sensor", "refId": "A" }
       ],
-      "title": "IDS Exporter Status",
+      "title": "Suricata Sensor Health",
       "type": "stat"
     },
     {
@@ -105,7 +105,7 @@
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
-          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 10 }, { "color": "red", "value": 50 } ] },
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "orange", "value": 10 }, { "color": "red", "value": 50 } ] },
           "unit": "short"
         },
         "overrides": []
@@ -115,7 +115,7 @@
       "options": { "colorMode": "background", "graphMode": "area", "justifyMode": "auto", "orientation": "horizontal", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
       "pluginVersion": "11.2.0",
       "targets": [
-        { "expr": "suricata_alerts_last_window", "legendFormat": "Alerts (1h)", "refId": "A" }
+        { "expr": "suricata_alerts_last_window or vector(0)", "legendFormat": "Alerts (1h)", "refId": "A" }
       ],
       "title": "Alerts (Last Hour)",
       "type": "stat"
@@ -125,7 +125,7 @@
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
-          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 1 }, { "color": "red", "value": 5 } ] },
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] },
           "unit": "short"
         },
         "overrides": []
@@ -135,7 +135,7 @@
       "options": { "colorMode": "background", "graphMode": "area", "justifyMode": "auto", "orientation": "horizontal", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
       "pluginVersion": "11.2.0",
       "targets": [
-        { "expr": "increase(suricata_alerts_total{severity=\"1\"}[$__range])", "legendFormat": "Critical (sev 1)", "refId": "A" }
+        { "expr": "sum(increase(suricata_alerts_total{severity=\"1\"}[$__range])) or vector(0)", "legendFormat": "Critical (sev 1)", "refId": "A" }
       ],
       "title": "Critical Alerts (Sev 1)",
       "type": "stat"
@@ -145,7 +145,7 @@
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
-          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 10 }, { "color": "red", "value": 50 } ] },
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "orange", "value": 10 }, { "color": "red", "value": 50 } ] },
           "unit": "short"
         },
         "overrides": []
@@ -155,7 +155,7 @@
       "options": { "colorMode": "background", "graphMode": "area", "justifyMode": "auto", "orientation": "horizontal", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
       "pluginVersion": "11.2.0",
       "targets": [
-        { "expr": "rate(suricata_alerts_total[5m]) * 60", "legendFormat": "Alerts/min", "refId": "A" }
+        { "expr": "sum(rate(suricata_alerts_total[5m])) * 60 or vector(0)", "legendFormat": "Alerts/min", "refId": "A" }
       ],
       "title": "Alert Rate (/min)",
       "type": "stat"
@@ -175,7 +175,7 @@
       "options": { "colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "horizontal", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
       "pluginVersion": "11.2.0",
       "targets": [
-        { "expr": "suricata_stats_uptime_seconds", "legendFormat": "Uptime", "refId": "A" }
+        { "expr": "suricata_stats_uptime_seconds or vector(0)", "legendFormat": "Uptime", "refId": "A" }
       ],
       "title": "Suricata Uptime",
       "type": "stat"
@@ -185,8 +185,8 @@
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
-          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 10 }, { "color": "red", "value": 100 } ] },
-          "unit": "short"
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "orange", "value": 3 }, { "color": "red", "value": 5 } ] },
+          "unit": "percent"
         },
         "overrides": []
       },
@@ -195,9 +195,9 @@
       "options": { "colorMode": "background", "graphMode": "area", "justifyMode": "auto", "orientation": "horizontal", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
       "pluginVersion": "11.2.0",
       "targets": [
-        { "expr": "increase(suricata_drop_packets_total[$__range])", "legendFormat": "Dropped Packets", "refId": "A" }
+        { "expr": "suricata_stats_kernel_drop_ratio_percent or vector(0)", "legendFormat": "Kernel Drop %", "refId": "A" }
       ],
-      "title": "Dropped Packets (IPS)",
+      "title": "Kernel Capture Drop Ratio",
       "type": "stat"
     },
     {
@@ -294,7 +294,7 @@
           "color": { "mode": "thresholds" },
           "custom": { "align": "auto", "cellOptions": { "type": "color-background" }, "inspect": false },
           "mappings": [],
-          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 5 }, { "color": "red", "value": 20 } ] },
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "orange", "value": 5 }, { "color": "red", "value": 20 } ] },
           "unit": "short"
         },
         "overrides": [
@@ -578,7 +578,7 @@
       },
       "pluginVersion": "11.2.0",
       "targets": [
-        { "expr": "sum by (rcode) (increase(suricata_dns_queries_total[$__range]))", "legendFormat": "{{ rcode }}", "refId": "A" }
+        { "expr": "sum by (rcode) (increase(suricata_dns_queries_total{rcode!=\"N/A\"}[$__range]))", "legendFormat": "{{ rcode }}", "refId": "A" }
       ],
       "title": "DNS Response Codes",
       "type": "piechart"
@@ -598,7 +598,7 @@
           "color": { "mode": "thresholds" },
           "custom": { "align": "auto", "cellOptions": { "type": "color-background" }, "inspect": false },
           "mappings": [],
-          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 5 } ] },
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null } ] },
           "unit": "short"
         },
         "overrides": [

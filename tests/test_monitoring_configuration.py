@@ -1,0 +1,228 @@
+import json
+import importlib.util
+import time
+from pathlib import Path
+
+import yaml
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+
+def load_json(relative_path: str) -> dict:
+    return json.loads((PROJECT_ROOT / relative_path).read_text(encoding="utf-8"))
+
+
+def load_yaml(relative_path: str) -> dict:
+    return yaml.safe_load((PROJECT_ROOT / relative_path).read_text(encoding="utf-8"))
+
+
+def load_module(relative_path: str, module_name: str):
+    spec = importlib.util.spec_from_file_location(module_name, PROJECT_ROOT / relative_path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
+def panel_by_title(dashboard: dict, title: str) -> dict:
+    return next(panel for panel in dashboard["panels"] if panel.get("title") == title)
+
+
+def threshold_colors(panel: dict) -> list[str]:
+    return [step["color"] for step in panel["fieldConfig"]["defaults"]["thresholds"]["steps"]]
+
+
+def test_zabbix_demo_servers_are_deployed_and_probed():
+    compose = load_yaml("docker-compose.yml")
+    services = compose["services"]
+    expected_agents = {
+        "zabbix-agent",
+        "zabbix-agent-application",
+        "zabbix-agent-database",
+        "zabbix-agent-security",
+    }
+    assert expected_agents <= services.keys()
+    assert "setup-demo-hosts" in services["zabbix-provisioner"]["command"]
+    assert services["suricata-demo-generator"]["profiles"] == ["demo"]
+
+    prometheus = load_yaml("configs/prometheus/prometheus.yml")
+    jobs = {job["job_name"]: job for job in prometheus["scrape_configs"]}
+    tcp_targets = set(jobs["blackbox-tcp"]["static_configs"][0]["targets"])
+    assert {
+        "zabbix-server:10051",
+        "zabbix-db:3306",
+        "zabbix-agent:10050",
+        "zabbix-agent-application:10050",
+        "zabbix-agent-database:10050",
+        "zabbix-agent-security:10050",
+    } <= tcp_targets
+
+
+def test_health_counts_use_real_probe_results_and_count_failed_targets():
+    dashboard = load_json("configs/grafana/dashboards/network-health-dashboard.json")
+    healthy_query = panel_by_title(dashboard, "Healthy Targets")["targets"][0]["expr"]
+    unavailable_query = panel_by_title(dashboard, "Unavailable Targets")["targets"][0]["expr"]
+    assert "count(up" in healthy_query and "probe_success" in healthy_query
+    assert "count(up" in unavailable_query and "probe_success" in unavailable_query
+    assert "== 0" in unavailable_query
+    assert "sum(up" not in unavailable_query
+
+    portal_source = (PROJECT_ROOT / "ml-anomaly" / "app.py").read_text(encoding="utf-8")
+    assert 'count(up{job!~"blackbox-(icmp|http|tcp)"} == 0)' in portal_source
+    assert 'count(probe_success{job=~"blackbox-(icmp|http|tcp)"} == 0)' in portal_source
+
+
+def test_dashboard_risk_colors_and_numeric_boundaries_are_consistent():
+    main = load_json("configs/grafana/dashboards/network-health-dashboard.json")
+    ml = load_json("configs/grafana/dashboards/ml-anomaly-dashboard.json")
+    zabbix = load_json("configs/grafana/dashboards/zabbix-infrastructure-dashboard.json")
+    suricata = load_json("configs/grafana/dashboards/suricata-ids-dashboard.json")
+
+    four_state = ["green", "yellow", "orange", "red"]
+    for dashboard, title in (
+        (main, "CPU Usage"),
+        (main, "Memory Usage"),
+        (main, "Disk Usage"),
+        (main, "Peak Anomaly Score"),
+        (ml, "Peak Anomaly Score"),
+        (zabbix, "Filesystem Space Utilization (%)"),
+        (suricata, "Alerts (Last Hour)"),
+        (suricata, "Kernel Capture Drop Ratio"),
+    ):
+        assert threshold_colors(panel_by_title(dashboard, title)) == four_state
+
+    cpu_steps = panel_by_title(main, "CPU Usage")["fieldConfig"]["defaults"]["thresholds"]["steps"]
+    assert [step["value"] for step in cpu_steps] == [None, 70, 85, 95]
+    score_steps = panel_by_title(main, "Peak Anomaly Score")["fieldConfig"]["defaults"]["thresholds"]["steps"]
+    assert [step["value"] for step in score_steps] == [None, 0.5, 0.65, 0.85]
+
+
+def test_suricata_dashboard_reports_sensor_freshness_and_capture_drop_ratio():
+    dashboard = load_json("configs/grafana/dashboards/suricata-ids-dashboard.json")
+    sensor_query = panel_by_title(dashboard, "Suricata Sensor Health")["targets"][0]["expr"]
+    drop_query = panel_by_title(dashboard, "Kernel Capture Drop Ratio")["targets"][0]["expr"]
+    assert "suricata_sensor_health" in sensor_query
+    assert "suricata_stats_kernel_drop_ratio_percent" in drop_query
+
+    exporter_source = (PROJECT_ROOT / "suricata-exporter" / "exporter.py").read_text(encoding="utf-8")
+    assert '"suricata_sensor_health"' in exporter_source
+    assert '"suricata_stats_kernel_drop_ratio_percent"' in exporter_source
+    assert "SENSOR_STALE_AFTER_SECONDS" in exporter_source
+
+
+def test_zabbix_dashboard_never_defaults_missing_services_to_online():
+    dashboard_path = PROJECT_ROOT / "configs" / "grafana" / "dashboards" / "zabbix-infrastructure-dashboard.json"
+    dashboard_text = dashboard_path.read_text(encoding="utf-8")
+    dashboard = json.loads(dashboard_text)
+    assert "or vector(1)" not in dashboard_text
+    assert "zabbix-server:10051" in panel_by_title(dashboard, "Zabbix Server Daemon")["targets"][0]["expr"]
+    assert "zabbix-db:3306" in panel_by_title(dashboard, "Zabbix MySQL Database")["targets"][0]["expr"]
+    assert panel_by_title(dashboard, "Healthy Zabbix Servers")["targets"][0]["expr"].startswith("count(probe_success")
+
+
+def test_outage_alerts_and_demo_scenarios_cover_suricata_and_zabbix():
+    alerts = load_yaml("configs/prometheus/alert_rules.yml")
+    alert_names = {
+        rule["alert"]
+        for group in alerts["groups"]
+        for rule in group["rules"]
+        if "alert" in rule
+    }
+    assert {
+        "SuricataSensorDown",
+        "SuricataExporterDown",
+        "ZabbixServerUnreachable",
+        "ZabbixDatabaseUnreachable",
+        "ZabbixAgentUnreachable",
+    } <= alert_names
+
+    demo_source = (PROJECT_ROOT / "scripts" / "fault_injection" / "demo_scenarios.sh").read_text(encoding="utf-8")
+    for scenario in (
+        "suricata-sensor-outage",
+        "suricata-exporter-outage",
+        "zabbix-server-outage",
+        "zabbix-application-outage",
+        "zabbix-database-outage",
+        "zabbix-security-outage",
+    ):
+        assert scenario in demo_source
+
+
+def test_suricata_stats_values_and_sensor_freshness(tmp_path, monkeypatch):
+    exporter = load_module("suricata-exporter/exporter.py", "suricata_exporter_test")
+    eve_path = tmp_path / "eve.json"
+    eve_path.write_text("", encoding="utf-8")
+    monkeypatch.setattr(exporter, "EVE_JSON_PATH", str(eve_path))
+
+    exporter.handle_stats(
+        {
+            "stats": {
+                "uptime": 120,
+                "capture": {"kernel_packets": 1000, "kernel_drops": 25},
+            }
+        }
+    )
+
+    assert exporter.suricata_uptime._value.get() == 120
+    assert exporter.capture_packets._value.get() == 1000
+    assert exporter.capture_kernel_drops._value.get() == 25
+    assert exporter.capture_kernel_drop_ratio._value.get() == 2.5
+    assert exporter._sensor_is_healthy() is True
+
+    exporter._last_stats_observed_at = time.time() - exporter.SENSOR_STALE_AFTER_SECONDS - 1
+    assert exporter._sensor_is_healthy() is False
+
+
+def test_zabbix_existing_host_reconciliation_uses_host_massadd(monkeypatch):
+    manager = load_module("scripts/zabbix_api_manager.py", "zabbix_api_manager_test")
+    api = manager.ZabbixAPI()
+    calls = []
+
+    def fake_call(method, params=None):
+        calls.append((method, params))
+        if method == "host.get":
+            return [
+                {
+                    "hostid": "10101",
+                    "host": "NHMF Application Server",
+                    "name": "NHMF Application Server",
+                    "interfaces": [{"interfaceid": "20202"}],
+                }
+            ]
+        return {}
+
+    monkeypatch.setattr(api, "call", fake_call)
+    monkeypatch.setattr(api, "get_linux_template_ids", lambda: [{"templateid": "10001"}])
+    result = api.ensure_host("NHMF Application Server", "zabbix-agent-application")
+
+    assert result["status"] == "updated"
+    assert any(method == "hostinterface.update" for method, _params in calls)
+    massadd = next(params for method, params in calls if method == "host.massadd")
+    assert massadd == {
+        "hosts": [{"hostid": "10101"}],
+        "templates": [{"templateid": "10001"}],
+    }
+
+
+def test_suricata_demo_generator_populates_every_dashboard_event_type(tmp_path):
+    generator = load_module(
+        "scripts/fault_injection/inject_suricata_demo_events.py",
+        "inject_suricata_demo_events_test",
+    )
+    eve_path = tmp_path / "eve.json"
+    count = generator.inject_events("all", eve_path)
+    events = [json.loads(line) for line in eve_path.read_text(encoding="utf-8").splitlines()]
+
+    assert count == len(events)
+    assert sum(event["event_type"] == "alert" for event in events) > 50
+    assert {event["event_type"] for event in events} >= {
+        "alert",
+        "flow",
+        "dns",
+        "http",
+        "tls",
+        "ssh",
+        "anomaly",
+    }
+    assert any(event.get("alert", {}).get("severity") == 1 for event in events)

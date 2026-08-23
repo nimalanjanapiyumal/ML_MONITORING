@@ -4,6 +4,7 @@ const apiBase = `http://${host}:8000`;
 const serviceUrls = {
   "grafana-main": `http://${host}:3000/d/nhmf-main/network-health-monitoring-hybrid-operations-dashboard`,
   "grafana-ml": `http://${host}:3000/d/nhmf-ml/ml-anomaly-detection-dashboard`,
+  "grafana-zabbix": `http://${host}:3000/d/nhmf-zabbix/zabbix-infrastructure-host-dashboard`,
   "suricata-ids": `http://${host}:3000/d/nhmf-suricata/suricata-ids-dashboard`,
   prometheus: `http://${host}:9090`,
   alertmanager: `http://${host}:9093`,
@@ -67,7 +68,7 @@ function resourceState(value) {
 function latencyState(seconds) {
   const value = finiteNumber(seconds);
   if (value === null) return "neutral";
-  if (value >= 0.4) return "critical";
+  if (value >= 0.5) return "critical";
   if (value >= 0.2) return "warning";
   if (value >= 0.15) return "watch";
   return "normal";
@@ -121,16 +122,16 @@ function updateOperationCards(data) {
   const peakScore = finiteNumber(ml.peak_score) ?? 0;
 
   element("healthyTargets").textContent = formatNumber(healthy);
-  element("healthyReason").textContent = healthy === null ? "Prometheus is not responding" : `${healthy} targets returned up = 1`;
+  element("healthyReason").textContent = healthy === null ? "Prometheus is not responding" : `${healthy} direct scrapes and endpoint probes succeeded`;
   setCardState("healthyCard", healthy === null ? "neutral" : healthy > 0 ? "normal" : "critical");
 
   element("unavailableTargets").textContent = formatNumber(unavailable);
-  element("unavailableReason").textContent = unavailable === null ? "No availability decision yet" : unavailable > 0 ? "One or more targets report up = 0" : "All scraped targets are available";
+  element("unavailableReason").textContent = unavailable === null ? "No availability decision yet" : unavailable > 0 ? "One or more scrapes or endpoint probes failed" : "All monitored checks are available";
   setCardState("unavailableCard", unavailable === null ? "neutral" : unavailable > 0 ? "critical" : "normal");
 
   element("activeAlerts").textContent = formatNumber(alerts);
   element("alertReason").textContent = alerts === null ? "Alert state is unavailable" : alerts > 0 ? "Review firing rules in Alertmanager" : "No Prometheus alerts are firing";
-  setCardState("alertCard", alerts === null ? "neutral" : alerts > 2 ? "critical" : alerts > 0 ? "warning" : "normal");
+  setCardState("alertCard", alerts === null ? "neutral" : alerts >= 5 ? "critical" : alerts >= 3 ? "warning" : alerts > 0 ? "watch" : "normal");
 
   element("modelState").textContent = ml.model_trained ? "Ready" : "Waiting";
   element("modelReason").textContent = ml.model_trained ? `${ml.result_count || 0} metric series scored` : "At least 30 points are required";

@@ -1,5 +1,7 @@
 # Test Plan
 
+Repeatable live demonstrations, expected dashboard values, colors, alerts, and recovery steps are defined in [Demo_Scenarios.md](Demo_Scenarios.md).
+
 ## Test Objective
 
 The objective is to validate that the framework can collect telemetry, show dashboards, generate rule-based alerts and detect abnormal patterns using ML anomaly scoring.

@@ -5,8 +5,14 @@
 # =============================================================================
 set -euo pipefail
 
-TARGET_HOST="${1:-127.0.0.1}"
+TARGET_HOST="${1:-}"
 SCENARIO="${2:-all}"
+
+if [[ -z "$TARGET_HOST" ]]; then
+  echo "A permitted lab target on the monitored interface is required." >&2
+  echo "Usage: $0 <AUTHORIZED_TARGET_IP> [scan|icmp|http|c2|all]" >&2
+  exit 2
+fi
 
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -82,7 +88,7 @@ case "$SCENARIO" in
     ;;
   *)
     echo "Unknown scenario: $SCENARIO"
-    echo "Usage: $0 [TARGET_IP] [scan|icmp|http|c2|all]"
+    echo "Usage: $0 <AUTHORIZED_TARGET_IP> [scan|icmp|http|c2|all]"
     exit 1
     ;;
 esac

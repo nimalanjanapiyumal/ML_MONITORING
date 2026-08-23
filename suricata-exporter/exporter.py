@@ -49,6 +49,7 @@ from prometheus_client import (
 EVE_JSON_PATH: str = os.getenv("EVE_JSON_PATH", "/var/log/suricata/eve.json")
 EXPORTER_PORT: int = int(os.getenv("EXPORTER_PORT", "9517"))
 ROLLING_WINDOW_SECONDS: int = int(os.getenv("ROLLING_WINDOW_SECONDS", "3600"))
+SENSOR_STALE_AFTER_SECONDS: int = int(os.getenv("SENSOR_STALE_AFTER_SECONDS", "30"))
 LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO").upper()
 TAIL_POLL_INTERVAL: float = float(os.getenv("TAIL_POLL_INTERVAL", "0.5"))
 
@@ -164,10 +165,49 @@ exporter_errors = Counter(
     registry=registry,
 )
 
+# Sensor freshness and capture-health metrics. These distinguish a healthy
+# exporter process from a healthy Suricata sensor producing current stats.
+sensor_health = Gauge(
+    "suricata_sensor_health",
+    "Whether the Suricata sensor has produced a stats event within the configured freshness window.",
+    registry=registry,
+)
+eve_file_available = Gauge(
+    "suricata_eve_file_available",
+    "Whether the configured Suricata EVE-JSON file currently exists.",
+    registry=registry,
+)
+eve_last_event_timestamp = Gauge(
+    "suricata_eve_last_event_timestamp_seconds",
+    "Unix timestamp when the exporter last processed an EVE event.",
+    registry=registry,
+)
+stats_last_event_timestamp = Gauge(
+    "suricata_stats_last_event_timestamp_seconds",
+    "Unix timestamp when the exporter last processed a Suricata stats event.",
+    registry=registry,
+)
+capture_packets = Gauge(
+    "suricata_stats_capture_packets",
+    "Latest cumulative kernel packet count reported by Suricata stats.",
+    registry=registry,
+)
+capture_kernel_drops = Gauge(
+    "suricata_stats_kernel_drops",
+    "Latest cumulative kernel drop count reported by Suricata stats.",
+    registry=registry,
+)
+capture_kernel_drop_ratio = Gauge(
+    "suricata_stats_kernel_drop_ratio_percent",
+    "Kernel packet drops as a percentage of captured packets from the latest Suricata stats event.",
+    registry=registry,
+)
+
 # ─── Rolling alert window ────────────────────────────────────────────────────
 # Store timestamps of recent alerts for the rolling gauge
 _alert_timestamps: deque[float] = deque()
 _alert_lock = threading.Lock()
+_last_stats_observed_at = 0.0
 
 
 def _record_alert_timestamp() -> None:
@@ -188,6 +228,26 @@ def _update_alert_window_gauge() -> None:
         except Exception as exc:
             log.warning("Alert window update failed: %s", exc)
         time.sleep(5)
+
+
+def _sensor_is_healthy(now: Optional[float] = None) -> bool:
+    observed_at = now if now is not None else time.time()
+    stats_fresh = (
+        _last_stats_observed_at > 0
+        and observed_at - _last_stats_observed_at <= SENSOR_STALE_AFTER_SECONDS
+    )
+    return Path(EVE_JSON_PATH).exists() and stats_fresh
+
+
+def _update_sensor_health_gauges() -> None:
+    while True:
+        try:
+            eve_file_available.set(1 if Path(EVE_JSON_PATH).exists() else 0)
+            sensor_health.set(1 if _sensor_is_healthy() else 0)
+        except Exception as exc:
+            log.warning("Sensor health update failed: %s", exc)
+            sensor_health.set(0)
+        time.sleep(1)
 
 
 # ─── Event Parsers ────────────────────────────────────────────────────────────
@@ -269,13 +329,29 @@ def handle_drop(evt: dict) -> None:
 
 
 def handle_stats(evt: dict) -> None:
+    global _last_stats_observed_at
+
     stats = evt.get("stats", {})
+    _last_stats_observed_at = time.time()
+    stats_last_event_timestamp.set(_last_stats_observed_at)
+    sensor_health.set(1)
     uptime = stats.get("uptime")
     if uptime is not None:
         try:
             suricata_uptime.set(float(uptime))
         except (ValueError, TypeError):
             pass
+
+    capture = stats.get("capture", {})
+    if isinstance(capture, dict):
+        try:
+            packets = float(capture.get("kernel_packets", 0) or 0)
+            drops = float(capture.get("kernel_drops", 0) or 0)
+            capture_packets.set(packets)
+            capture_kernel_drops.set(drops)
+            capture_kernel_drop_ratio.set((drops / packets * 100.0) if packets > 0 else 0.0)
+        except (ValueError, TypeError):
+            exporter_errors.labels(stage="stats_capture").inc()
 
 
 # Dispatch table
@@ -342,6 +418,7 @@ def tail_eve_json(path: str) -> None:
                 continue
 
             event_type = evt.get("event_type", "unknown")
+            eve_last_event_timestamp.set(time.time())
             eve_events_total.labels(event_type=event_type).inc()
 
             handler = _HANDLERS.get(event_type)
@@ -375,7 +452,15 @@ class MetricsHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
             self.wfile.write(data)
-        elif self.path in ("/health", "/healthz", "/-/healthy"):
+        elif self.path in ("/health", "/healthz"):
+            healthy = _sensor_is_healthy()
+            body = b"ok" if healthy else b"suricata sensor stale or unavailable"
+            self.send_response(200 if healthy else 503)
+            self.send_header("Content-Type", "text/plain")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        elif self.path == "/-/healthy":
             body = b"ok"
             self.send_response(200)
             self.send_header("Content-Type", "text/plain")
@@ -399,9 +484,11 @@ def main() -> None:
     log.info("EVE_JSON_PATH        = %s", EVE_JSON_PATH)
     log.info("EXPORTER_PORT        = %d", EXPORTER_PORT)
     log.info("ROLLING_WINDOW_SECS  = %d", ROLLING_WINDOW_SECONDS)
+    log.info("SENSOR_STALE_AFTER   = %d", SENSOR_STALE_AFTER_SECONDS)
 
     # Background: rolling alert window gauge updater
     threading.Thread(target=_update_alert_window_gauge, daemon=True, name="alert-window").start()
+    threading.Thread(target=_update_sensor_health_gauges, daemon=True, name="sensor-health").start()
 
     # Background: EVE-JSON tailer
     threading.Thread(target=tail_eve_json, args=(EVE_JSON_PATH,), daemon=True, name="eve-tailer").start()

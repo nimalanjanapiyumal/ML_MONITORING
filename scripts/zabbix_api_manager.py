@@ -8,6 +8,7 @@ import os
 import sys
 import json
 import argparse
+import time
 import urllib.request
 import urllib.error
 
@@ -15,6 +16,13 @@ import urllib.error
 DEFAULT_ZABBIX_URL = os.getenv("ZABBIX_URL", "http://localhost:8080/api_jsonrpc.php")
 DEFAULT_USER = os.getenv("ZABBIX_ADMIN_USER", "Admin")
 DEFAULT_PASSWORD = os.getenv("ZABBIX_ADMIN_PASSWORD", "zabbix")
+
+DEMO_HOSTS = (
+    {"hostname": "Zabbix server", "dns": "zabbix-agent", "role": "Core monitoring server"},
+    {"hostname": "NHMF Application Server", "dns": "zabbix-agent-application", "role": "Application tier"},
+    {"hostname": "NHMF Database Server", "dns": "zabbix-agent-database", "role": "Database tier"},
+    {"hostname": "NHMF Security Server", "dns": "zabbix-agent-security", "role": "Suricata/security tier"},
+)
 
 
 class ZabbixAPI:
@@ -80,6 +88,25 @@ class ZabbixAPI:
     def get_host_groups(self) -> list:
         return self.call("hostgroup.get", {"output": ["groupid", "name"]})
 
+    def get_linux_group_id(self) -> str:
+        groups = self.call(
+            "hostgroup.get",
+            {"output": ["groupid", "name"], "filter": {"name": ["Linux servers"]}},
+        )
+        if groups:
+            return groups[0]["groupid"]
+        all_groups = self.get_host_groups()
+        return all_groups[0]["groupid"] if all_groups else "2"
+
+    def get_linux_template_ids(self) -> list:
+        templates = self.get_templates("Linux")
+        preferred_names = ("Linux by Zabbix agent", "Linux by Zabbix agent active")
+        for preferred_name in preferred_names:
+            match = next((item for item in templates if item.get("name") == preferred_name), None)
+            if match:
+                return [{"templateid": match["templateid"]}]
+        return [{"templateid": templates[0]["templateid"]}] if templates else []
+
     def get_problems(self) -> list:
         return self.call(
             "problem.get",
@@ -92,19 +119,17 @@ class ZabbixAPI:
             },
         )
 
-    def fix_agent_interface(self, target_dns: str = "zabbix-agent") -> dict:
+    def fix_agent_interface(self, target_dns: str = "zabbix-agent", hostname: str = "Zabbix server") -> dict:
         """Fixes the default Zabbix server host interface so it connects to the zabbix-agent container via Docker DNS."""
         hosts = self.call(
             "host.get",
             {
-                "filter": {"host": ["Zabbix server"]},
+                "filter": {"host": [hostname]},
                 "selectInterfaces": ["interfaceid", "ip", "dns", "useip", "port"],
             },
         )
         if not hosts:
-            hosts = self.get_hosts()
-            if not hosts:
-                return {"status": "error", "message": "No hosts found in Zabbix"}
+            return {"status": "error", "message": f"Host '{hostname}' was not found in Zabbix"}
 
         host = hosts[0]
         interfaces = host.get("interfaces", [])
@@ -130,11 +155,6 @@ class ZabbixAPI:
         }
 
     def create_host(self, hostname: str, dns: str = "zabbix-agent", port: str = "10050") -> dict:
-        groups = self.get_host_groups()
-        group_id = groups[0]["groupid"] if groups else "2"
-        templates = self.get_templates("Linux")
-        template_ids = [{"templateid": t["templateid"]} for t in templates[:1]]
-
         return self.call(
             "host.create",
             {
@@ -149,10 +169,74 @@ class ZabbixAPI:
                         "port": port,
                     }
                 ],
-                "groups": [{"groupid": group_id}],
-                "templates": template_ids,
+                "groups": [{"groupid": self.get_linux_group_id()}],
+                "templates": self.get_linux_template_ids(),
             },
         )
+
+    def ensure_host(self, hostname: str, dns: str, port: str = "10050") -> dict:
+        existing = self.call(
+            "host.get",
+            {
+                "output": ["hostid", "host", "name"],
+                "filter": {"host": [hostname]},
+                "selectInterfaces": ["interfaceid", "ip", "dns", "useip", "port"],
+            },
+        )
+        if existing:
+            host = existing[0]
+            interfaces = host.get("interfaces", [])
+            if interfaces:
+                self.call(
+                    "hostinterface.update",
+                    {
+                        "interfaceid": interfaces[0]["interfaceid"],
+                        "dns": dns,
+                        "useip": 0,
+                        "port": port,
+                    },
+                )
+            template_ids = self.get_linux_template_ids()
+            if template_ids:
+                self.call(
+                    "host.massadd",
+                    {"hosts": [{"hostid": host["hostid"]}], "templates": template_ids},
+                )
+            return {"status": "updated", "hostid": host["hostid"], "hostname": hostname, "dns": dns}
+
+        result = self.create_host(hostname, dns, port)
+        host_ids = result.get("hostids", [])
+        return {
+            "status": "created",
+            "hostid": host_ids[0] if host_ids else None,
+            "hostname": hostname,
+            "dns": dns,
+        }
+
+    def setup_demo_hosts(self) -> list:
+        results = []
+        for host in DEMO_HOSTS:
+            if host["hostname"] == "Zabbix server":
+                result = self.fix_agent_interface(host["dns"], host["hostname"])
+                result.update({"hostname": host["hostname"], "role": host["role"]})
+            else:
+                result = self.ensure_host(host["hostname"], host["dns"])
+                result["role"] = host["role"]
+            results.append(result)
+        return results
+
+
+def wait_for_api(api: ZabbixAPI, wait_seconds: int) -> str:
+    deadline = time.monotonic() + max(wait_seconds, 0)
+    last_error = None
+    while True:
+        try:
+            return api.get_version()
+        except Exception as exc:
+            last_error = exc
+            if time.monotonic() >= deadline:
+                raise ConnectionError(f"Zabbix API was not ready within {wait_seconds}s: {last_error}")
+            time.sleep(2)
 
 
 def main():
@@ -160,15 +244,20 @@ def main():
     parser.add_argument("--url", default=DEFAULT_ZABBIX_URL, help="Zabbix JSON-RPC API endpoint")
     parser.add_argument("--user", default=DEFAULT_USER, help="Zabbix username")
     parser.add_argument("--password", default=DEFAULT_PASSWORD, help="Zabbix password")
-    parser.add_argument("action", choices=["status", "hosts", "problems", "templates", "setup-host", "fix-agent"], help="Action to execute")
+    parser.add_argument(
+        "action",
+        choices=["status", "hosts", "problems", "templates", "setup-host", "setup-demo-hosts", "fix-agent"],
+        help="Action to execute",
+    )
     parser.add_argument("--host-name", default="NHMF-Docker-Host", help="Host name for setup-host action")
     parser.add_argument("--dns", default="zabbix-agent", help="DNS name for host interface")
+    parser.add_argument("--wait-seconds", type=int, default=0, help="Wait for the Zabbix API before running the action")
 
     args = parser.parse_args()
     api = ZabbixAPI(args.url, args.user, args.password)
 
     try:
-        version = api.get_version()
+        version = wait_for_api(api, args.wait_seconds)
         print(f"[OK] Connected to Zabbix API v{version} at {args.url}")
 
         api.login()
@@ -211,12 +300,18 @@ def main():
             print(json.dumps(templates, indent=2))
 
         elif args.action == "setup-host":
-            existing = [h for h in api.get_hosts() if h.get("host") == args.host_name]
-            if existing:
-                print(f"[INFO] Host '{args.host_name}' already exists (ID: {existing[0]['hostid']}).")
-            else:
-                res = api.create_host(args.host_name, args.dns)
-                print(f"[OK] Created host '{args.host_name}' with ID: {res.get('hostids', [])}")
+            result = api.ensure_host(args.host_name, args.dns)
+            print(f"[OK] {result['status'].title()} host '{args.host_name}' (ID: {result.get('hostid')}, DNS: {args.dns}:10050).")
+
+        elif args.action == "setup-demo-hosts":
+            results = api.setup_demo_hosts()
+            print(f"\n--- Demo Host Provisioning ({len(results)} hosts) ---")
+            for result in results:
+                state = result.get("status", "unknown").upper()
+                print(
+                    f"  [{state}] {result.get('hostname')} — {result.get('role')} "
+                    f"(DNS: {result.get('dns')}:10050)"
+                )
 
     except Exception as e:
         print(f"[ERROR] {e}", file=sys.stderr)

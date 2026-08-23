@@ -2,7 +2,7 @@ groups:
   - name: network-health-baseline-alerts
     rules:
       - alert: TargetDown
-        expr: up == 0
+        expr: up{job!~"blackbox-(icmp|http|tcp)"} == 0
         for: 2m
         labels:
           severity: critical
@@ -11,8 +11,38 @@ groups:
           summary: "Monitoring target is down"
           description: "Target {{ $labels.instance }} in job {{ $labels.job }} has been unreachable for more than 2 minutes."
 
+      - alert: BlackboxProbeExporterDown
+        expr: min by(job, instance) (up{job=~"blackbox-(icmp|http|tcp)"}) == 0
+        for: 1m
+        labels:
+          severity: critical
+          category: availability
+        annotations:
+          summary: "Blackbox probe exporter is unavailable"
+          description: "Prometheus cannot execute probes for {{ $labels.job }} through {{ $labels.instance }}."
+
+      - alert: ICMPProbeFailed
+        expr: probe_success{job="blackbox-icmp"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          category: availability
+        annotations:
+          summary: "ICMP target is unreachable"
+          description: "ICMP probe failed for {{ $labels.target }} for more than 2 minutes."
+
+      - alert: TCPProbeFailed
+        expr: probe_success{job="blackbox-tcp"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          category: availability
+        annotations:
+          summary: "TCP service is unreachable"
+          description: "TCP connection probe failed for {{ $labels.target }} for more than 2 minutes."
+
       - alert: HighICMPLatency
-        expr: avg_over_time(probe_duration_seconds{job="blackbox-icmp"}[2m]) > 0.20
+        expr: avg_over_time(probe_duration_seconds{job="blackbox-icmp"}[2m]) > 0.20 and avg_over_time(probe_duration_seconds{job="blackbox-icmp"}[2m]) < 0.50
         for: 2m
         labels:
           severity: warning
@@ -20,6 +50,16 @@ groups:
         annotations:
           summary: "High ICMP latency detected"
           description: "Target {{ $labels.target }} has average ICMP probe duration above 200ms."
+
+      - alert: CriticalICMPLatency
+        expr: avg_over_time(probe_duration_seconds{job="blackbox-icmp"}[2m]) >= 0.50
+        for: 2m
+        labels:
+          severity: critical
+          category: latency
+        annotations:
+          summary: "Critical ICMP latency detected"
+          description: "Target {{ $labels.target }} has average ICMP probe duration at or above 500ms."
 
       - alert: HTTPProbeFailed
         expr: probe_success{job="blackbox-http"} == 0
@@ -32,7 +72,7 @@ groups:
           description: "HTTP probe failed for {{ $labels.target }}."
 
       - alert: HighCPUUsage
-        expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[2m])) * 100) > 85
+        expr: (100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[2m])) * 100) > 85) and (100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[2m])) * 100) < 95)
         for: 3m
         labels:
           severity: warning
@@ -41,8 +81,18 @@ groups:
           summary: "High CPU usage"
           description: "CPU usage on {{ $labels.instance }} is above 85% for more than 3 minutes."
 
+      - alert: CriticalCPUUsage
+        expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[2m])) * 100) >= 95
+        for: 3m
+        labels:
+          severity: critical
+          category: resource
+        annotations:
+          summary: "Critical CPU usage"
+          description: "CPU usage on {{ $labels.instance }} is at or above 95% for more than 3 minutes."
+
       - alert: HighMemoryUsage
-        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 85
+        expr: ((1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 85) and ((1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 < 95)
         for: 3m
         labels:
           severity: warning
@@ -51,8 +101,18 @@ groups:
           summary: "High memory usage"
           description: "Memory usage on {{ $labels.instance }} is above 85% for more than 3 minutes."
 
+      - alert: CriticalMemoryUsage
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 >= 95
+        for: 3m
+        labels:
+          severity: critical
+          category: resource
+        annotations:
+          summary: "Critical memory usage"
+          description: "Memory usage on {{ $labels.instance }} is at or above 95% for more than 3 minutes."
+
       - alert: HighDiskUsage
-        expr: (1 - (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay|squashfs"})) * 100 > 85
+        expr: ((1 - (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay|squashfs"})) * 100 > 85) and ((1 - (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay|squashfs"})) * 100 < 95)
         for: 5m
         labels:
           severity: warning
@@ -60,6 +120,16 @@ groups:
         annotations:
           summary: "High disk usage"
           description: "Disk usage on {{ $labels.instance }} {{ $labels.mountpoint }} is above 85%."
+
+      - alert: CriticalDiskUsage
+        expr: (1 - (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay|squashfs"})) * 100 >= 95
+        for: 5m
+        labels:
+          severity: critical
+          category: resource
+        annotations:
+          summary: "Critical disk usage"
+          description: "Disk usage on {{ $labels.instance }} {{ $labels.mountpoint }} is at or above 95%."
 
       - alert: MLAnomalyDetected
         expr: nhmf_anomaly_severity_level == 2
@@ -123,6 +193,16 @@ groups:
           summary: "Suricata exporter is unreachable"
           description: "Prometheus cannot scrape suricata-exporter. IDS visibility is degraded."
 
+      - alert: SuricataSensorDown
+        expr: suricata_sensor_health == 0
+        for: 30s
+        labels:
+          severity: critical
+          category: ids
+        annotations:
+          summary: "Suricata sensor is stopped or stale"
+          description: "The exporter has not received a fresh Suricata stats event. IDS packet inspection is unavailable."
+
   - name: zabbix-infrastructure-alerts
     rules:
       - alert: ZabbixWebDown
@@ -136,14 +216,34 @@ groups:
           description: "Blackbox HTTP probe failed to connect to Zabbix Web UI on port 8080."
 
       - alert: ZabbixServerUnreachable
-        expr: probe_success{job="blackbox-icmp", target="zabbix-server"} == 0
+        expr: probe_success{job="blackbox-tcp", target="zabbix-server:10051"} == 0
         for: 2m
         labels:
           severity: critical
           category: zabbix
         annotations:
           summary: "Zabbix Server daemon is unreachable"
-          description: "Zabbix Server container is not responding to network probes."
+          description: "Zabbix Server is not accepting TCP connections on port 10051."
+
+      - alert: ZabbixDatabaseUnreachable
+        expr: probe_success{job="blackbox-tcp", target="zabbix-db:3306"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          category: zabbix
+        annotations:
+          summary: "Zabbix database is unreachable"
+          description: "The Zabbix MySQL database is not accepting TCP connections on port 3306."
+
+      - alert: ZabbixAgentUnreachable
+        expr: probe_success{job="blackbox-tcp", target=~"zabbix-agent.*:10050"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          category: zabbix
+        annotations:
+          summary: "Zabbix monitored server agent is unreachable"
+          description: "The agent endpoint {{ $labels.target }} is not accepting TCP connections on port 10050."
 
       - alert: ZabbixWebHighLatency
         expr: probe_duration_seconds{job="blackbox-http", target=~"http://zabbix-web:8080.*"} > 0.5

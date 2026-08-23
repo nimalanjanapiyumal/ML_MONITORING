@@ -184,7 +184,7 @@
       "pluginVersion": "11.2.0",
       "targets": [
         {
-          "expr": "sum(up{job=~\"$job\", instance=~\"$instance\"} == 1)",
+          "expr": "(count(up{job=~\"$job\", instance=~\"$instance\", job!~\"blackbox-(icmp|http|tcp)\"} == 1) or vector(0)) + (count(probe_success{job=~\"$job\", instance=~\"$instance\"} == 1) or vector(0))",
           "refId": "A"
         }
       ],
@@ -243,7 +243,7 @@
       "pluginVersion": "11.2.0",
       "targets": [
         {
-          "expr": "sum(up{job=~\"$job\", instance=~\"$instance\"} == 0)",
+          "expr": "(count(up{job=~\"$job\", instance=~\"$instance\", job!~\"blackbox-(icmp|http|tcp)\"} == 0) or vector(0)) + (count(probe_success{job=~\"$job\", instance=~\"$instance\"} == 0) or vector(0))",
           "refId": "A"
         }
       ],
@@ -277,7 +277,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "orange",
+                "color": "yellow",
                 "value": null
               },
               {
@@ -314,7 +314,7 @@
       "pluginVersion": "11.2.0",
       "targets": [
         {
-          "expr": "max(nhmf_model_trained)",
+          "expr": "max(nhmf_model_trained) or vector(0)",
           "refId": "A"
         }
       ],
@@ -340,8 +340,16 @@
                 "value": null
               },
               {
-                "color": "red",
+                "color": "yellow",
                 "value": 1
+              },
+              {
+                "color": "orange",
+                "value": 3
+              },
+              {
+                "color": "red",
+                "value": 5
               }
             ]
           },
@@ -373,7 +381,7 @@
       "pluginVersion": "11.2.0",
       "targets": [
         {
-          "expr": "count(ALERTS{alertstate=\"firing\"})",
+          "expr": "count(ALERTS{alertstate=\"firing\"}) or vector(0)",
           "refId": "A"
         }
       ],
@@ -399,12 +407,16 @@
                 "value": null
               },
               {
-                "color": "orange",
+                "color": "yellow",
                 "value": 120
               },
               {
-                "color": "red",
+                "color": "orange",
                 "value": 300
+              },
+              {
+                "color": "red",
+                "value": 600
               }
             ]
           },
@@ -436,7 +448,7 @@
       "pluginVersion": "11.2.0",
       "targets": [
         {
-          "expr": "time() - max(nhmf_last_run_timestamp)",
+          "expr": "clamp_min(time() - max(nhmf_last_run_timestamp), 0) or vector(0)",
           "refId": "A"
         }
       ],
@@ -462,12 +474,16 @@
                 "value": null
               },
               {
-                "color": "orange",
+                "color": "yellow",
                 "value": 0.5
               },
               {
+                "color": "orange",
+                "value": 0.65
+              },
+              {
                 "color": "red",
-                "value": 1
+                "value": 0.85
               }
             ]
           },
@@ -499,7 +515,7 @@
       "pluginVersion": "11.2.0",
       "targets": [
         {
-          "expr": "max(nhmf_anomaly_score)",
+          "expr": "max(nhmf_anomaly_score) or vector(0)",
           "refId": "A"
         }
       ],
@@ -568,6 +584,10 @@
               {
                 "color": "green",
                 "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.15
               },
               {
                 "color": "orange",
@@ -757,12 +777,16 @@
                 "value": null
               },
               {
-                "color": "orange",
+                "color": "yellow",
                 "value": 70
               },
               {
-                "color": "red",
+                "color": "orange",
                 "value": 85
+              },
+              {
+                "color": "red",
+                "value": 95
               }
             ]
           },
@@ -856,12 +880,16 @@
                 "value": null
               },
               {
-                "color": "orange",
+                "color": "yellow",
                 "value": 70
               },
               {
-                "color": "red",
+                "color": "orange",
                 "value": 85
+              },
+              {
+                "color": "red",
+                "value": 95
               }
             ]
           },
@@ -955,12 +983,16 @@
                 "value": null
               },
               {
-                "color": "orange",
+                "color": "yellow",
                 "value": 70
               },
               {
-                "color": "red",
+                "color": "orange",
                 "value": 85
+              },
+              {
+                "color": "red",
+                "value": 95
               }
             ]
           },
@@ -1134,8 +1166,16 @@
                 "value": null
               },
               {
-                "color": "red",
+                "color": "yellow",
                 "value": 1
+              },
+              {
+                "color": "orange",
+                "value": 2
+              },
+              {
+                "color": "red",
+                "value": 3
               }
             ]
           },
@@ -1167,7 +1207,7 @@
       "pluginVersion": "11.2.0",
       "targets": [
         {
-          "expr": "sum(nhmf_anomaly_flag)",
+          "expr": "sum(nhmf_anomaly_flag) or vector(0)",
           "refId": "A"
         }
       ],
@@ -1234,7 +1274,7 @@
       "pluginVersion": "11.2.0",
       "targets": [
         {
-          "expr": "max(nhmf_anomaly_score)",
+          "expr": "max(nhmf_anomaly_score) or vector(0)",
           "refId": "A"
         }
       ],
@@ -1261,6 +1301,10 @@
               {
                 "color": "red",
                 "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.25
               },
               {
                 "color": "yellow",
@@ -1593,12 +1637,16 @@
                 "value": null
               },
               {
-                "color": "orange",
+                "color": "yellow",
                 "value": 0.5
               },
               {
-                "color": "red",
+                "color": "orange",
                 "value": 0.65
+              },
+              {
+                "color": "red",
+                "value": 0.85
               }
             ]
           },
@@ -1853,10 +1901,16 @@
       "pluginVersion": "11.2.0",
       "targets": [
         {
-          "expr": "up{job=~\"$job\", instance=~\"$instance\"}",
+          "expr": "up{job=~\"$job\", instance=~\"$instance\", job!~\"blackbox-(icmp|http|tcp)\"}",
           "format": "table",
           "instant": true,
           "refId": "A"
+        },
+        {
+          "expr": "probe_success{job=~\"$job\", instance=~\"$instance\"}",
+          "format": "table",
+          "instant": true,
+          "refId": "B"
         }
       ],
       "title": "Target Status",

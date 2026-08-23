@@ -217,8 +217,8 @@ check_url "Suricata Exporter" "http://localhost:9517/health" 60 "suricata-export
 
 if command -v python3 >/dev/null 2>&1; then
   echo ""
-  echo "Auto-configuring Zabbix agent interface..."
-  python3 "$PROJECT_ROOT/scripts/zabbix_api_manager.py" fix-agent 2>/dev/null || true
+  echo "Reconciling the four Zabbix monitored servers..."
+  python3 "$PROJECT_ROOT/scripts/zabbix_api_manager.py" setup-demo-hosts 2>/dev/null || true
 fi
 
 echo ""
@@ -227,6 +227,7 @@ echo "Main Portal:          http://localhost:8088"
 echo "Grafana:              http://localhost:3000  (admin/${GRAFANA_ADMIN_PASSWORD:-admin123})"
 echo "ML Dashboard:         http://localhost:3000/d/nhmf-ml/ml-anomaly-detection-dashboard"
 echo "Suricata IDS:         http://localhost:3000/d/nhmf-suricata/suricata-ids-dashboard"
+echo "Zabbix Dashboard:     http://localhost:3000/d/nhmf-zabbix/zabbix-infrastructure-host-dashboard"
 echo "Prometheus:           http://localhost:9090"
 echo "Alertmanager:         http://localhost:9093"
 echo "ML API:               http://localhost:8000/health"
@@ -235,3 +236,4 @@ echo "Zabbix:               http://localhost:8080  Admin/zabbix"
 echo ""
 echo "Network interface monitored by Suricata: ${SURICATA_INTERFACE}"
 echo "To update Suricata rules:  ./scripts/update_suricata_rules.sh"
+echo "To list demo scenarios:    ./scripts/fault_injection/demo_scenarios.sh list"
