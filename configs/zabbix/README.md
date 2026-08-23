@@ -54,7 +54,7 @@ NHMF includes an automated API management suite in `scripts/`:
 ./scripts/setup_zabbix.sh templates
 ```
 
-The seven bundled servers are grouped under **NHMF Monitored Servers** in Zabbix. Open **Data collection → Hosts** and filter by that group to see core, application, database, security, web, API, and backup agent interfaces with their native ZBX availability indicators.
+The seven bundled servers are grouped under **NHMF Monitored Servers** in Zabbix. Open **Data collection → Hosts** and filter by that group to see core, application, database, security, web, API, and backup agent interfaces with their native ZBX availability indicators. Provisioning registers the current container IP as the active endpoint and keeps the Compose DNS name as metadata, avoiding dependence on a malfunctioning Docker DNS resolver.
 
 ---
 

@@ -8,6 +8,7 @@ import os
 import sys
 import json
 import argparse
+import subprocess
 import time
 import urllib.request
 import urllib.error
@@ -16,6 +17,7 @@ import urllib.error
 DEFAULT_ZABBIX_URL = os.getenv("ZABBIX_URL", "http://localhost:8080/api_jsonrpc.php")
 DEFAULT_USER = os.getenv("ZABBIX_ADMIN_USER", "Admin")
 DEFAULT_PASSWORD = os.getenv("ZABBIX_ADMIN_PASSWORD", "zabbix")
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 DEMO_HOSTS = (
     {"hostname": "Zabbix server", "dns": "zabbix-agent", "role": "Core monitoring server"},
@@ -27,6 +29,39 @@ DEMO_HOSTS = (
     {"hostname": "NHMF Backup Server", "dns": "zabbix-agent-backup", "role": "Backup/recovery tier"},
 )
 DEMO_GROUP_NAME = "NHMF Monitored Servers"
+
+
+def resolve_compose_service_ip(service_name: str) -> str | None:
+    """Resolve a running Compose service IP without depending on Docker's embedded DNS."""
+    try:
+        compose_result = subprocess.run(
+            ["docker", "compose", "ps", "-q", service_name],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=10,
+            cwd=PROJECT_ROOT,
+        )
+        container_ids = compose_result.stdout.strip().splitlines()
+        if not container_ids:
+            return None
+        inspect_result = subprocess.run(
+            ["docker", "inspect", container_ids[0]],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=10,
+            cwd=PROJECT_ROOT,
+        )
+        containers = json.loads(inspect_result.stdout)
+        networks = containers[0].get("NetworkSettings", {}).get("Networks", {}) if containers else {}
+        for network in networks.values():
+            ip_address = network.get("IPAddress", "")
+            if ip_address:
+                return ip_address
+    except (FileNotFoundError, IndexError, KeyError, json.JSONDecodeError, subprocess.SubprocessError):
+        return None
+    return None
 
 
 class ZabbixAPI:
@@ -122,6 +157,7 @@ class ZabbixAPI:
                         "health": "NOT REGISTERED",
                         "availability": "UNKNOWN",
                         "agent_ping": "NO DATA",
+                        "endpoint": demo_host["dns"],
                         "error": "Host is missing from Zabbix",
                     }
                 )
@@ -133,6 +169,8 @@ class ZabbixAPI:
                 next((interface for interface in interfaces if str(interface.get("type")) == "1"), interfaces[0] if interfaces else {}),
             )
             availability_value = str(agent_interface.get("available", "0"))
+            use_ip = str(agent_interface.get("useip", "0")) == "1"
+            endpoint = agent_interface.get("ip") if use_ip else agent_interface.get("dns")
             availability = {"0": "PENDING", "1": "AVAILABLE", "2": "UNAVAILABLE"}.get(
                 availability_value, "UNKNOWN"
             )
@@ -160,6 +198,7 @@ class ZabbixAPI:
                     "health": health,
                     "availability": availability,
                     "agent_ping": "1" if last_value == "1" else "NO DATA",
+                    "endpoint": endpoint or demo_host["dns"],
                     "lastclock": last_clock,
                     "error": agent_interface.get("error") or ping_item.get("error") or "",
                 }
@@ -223,12 +262,12 @@ class ZabbixAPI:
         )
 
     def fix_agent_interface(self, target_dns: str = "zabbix-agent", hostname: str = "Zabbix server") -> dict:
-        """Fixes the default Zabbix server host interface so it connects to the zabbix-agent container via Docker DNS."""
+        """Fix the default host interface using a container IP when available."""
         hosts = self.call(
             "host.get",
             {
                 "filter": {"host": [hostname]},
-                "selectInterfaces": ["interfaceid", "ip", "dns", "useip", "port"],
+                "selectInterfaces": ["interfaceid", "ip", "dns", "useip", "port", "type", "main"],
             },
         )
         if not hosts:
@@ -244,12 +283,14 @@ class ZabbixAPI:
             next((interface for interface in interfaces if str(interface.get("type")) == "1"), interfaces[0]),
         )
         iface_id = agent_interface["interfaceid"]
-        res = self.call(
+        target_ip = resolve_compose_service_ip(target_dns)
+        self.call(
             "hostinterface.update",
             {
                 "interfaceid": iface_id,
                 "dns": target_dns,
-                "useip": 0,
+                "ip": target_ip or agent_interface.get("ip") or "127.0.0.1",
+                "useip": 1 if target_ip else 0,
                 "port": "10050",
             },
         )
@@ -259,10 +300,17 @@ class ZabbixAPI:
             "host": host.get("name", "Zabbix server"),
             "interfaceid": iface_id,
             "dns": target_dns,
-            "useip": 0,
+            "ip": target_ip,
+            "useip": 1 if target_ip else 0,
         }
 
-    def create_host(self, hostname: str, dns: str = "zabbix-agent", port: str = "10050") -> dict:
+    def create_host(
+        self,
+        hostname: str,
+        dns: str = "zabbix-agent",
+        port: str = "10050",
+        ip_address: str | None = None,
+    ) -> dict:
         group_ids = {self.get_linux_group_id(), self.get_demo_group_id()}
         return self.call(
             "host.create",
@@ -272,8 +320,8 @@ class ZabbixAPI:
                     {
                         "type": 1,
                         "main": 1,
-                        "useip": 0,
-                        "ip": "127.0.0.1",
+                        "useip": 1 if ip_address else 0,
+                        "ip": ip_address or "127.0.0.1",
                         "dns": dns,
                         "port": port,
                     }
@@ -283,13 +331,21 @@ class ZabbixAPI:
             },
         )
 
-    def ensure_host(self, hostname: str, dns: str, port: str = "10050") -> dict:
+    def ensure_host(
+        self,
+        hostname: str,
+        dns: str,
+        port: str = "10050",
+        ip_address: str | None = None,
+    ) -> dict:
         existing = self.call(
             "host.get",
             {
                 "output": ["hostid", "host", "name"],
                 "filter": {"host": [hostname]},
-                "selectInterfaces": ["interfaceid", "ip", "dns", "useip", "port"],
+                "selectInterfaces": ["interfaceid", "ip", "dns", "useip", "port", "type", "main"],
+                "selectParentTemplates": ["templateid"],
+                "selectHostGroups": ["groupid"],
             },
         )
         if existing:
@@ -305,7 +361,8 @@ class ZabbixAPI:
                     {
                         "interfaceid": agent_interface["interfaceid"],
                         "dns": dns,
-                        "useip": 0,
+                        "ip": ip_address or agent_interface.get("ip") or "127.0.0.1",
+                        "useip": 1 if ip_address else 0,
                         "port": port,
                     },
                 )
@@ -316,36 +373,74 @@ class ZabbixAPI:
                         "hostid": host["hostid"],
                         "type": 1,
                         "main": 1,
-                        "useip": 0,
-                        "ip": "127.0.0.1",
+                        "useip": 1 if ip_address else 0,
+                        "ip": ip_address or "127.0.0.1",
                         "dns": dns,
                         "port": port,
                     },
                 )
             self.call("host.update", {"hostid": host["hostid"], "status": 0})
             template_ids = self.get_linux_template_ids()
-            mass_add = {
-                "hosts": [{"hostid": host["hostid"]}],
-                "groups": [{"groupid": self.get_demo_group_id()}],
+            linked_template_ids = {item.get("templateid") for item in host.get("parentTemplates", [])}
+            linked_group_ids = {item.get("groupid") for item in host.get("hostgroups", [])}
+            demo_group_id = self.get_demo_group_id()
+            missing_templates = [
+                template for template in template_ids if template.get("templateid") not in linked_template_ids
+            ]
+            mass_add = {"hosts": [{"hostid": host["hostid"]}]}
+            if demo_group_id not in linked_group_ids:
+                mass_add["groups"] = [{"groupid": demo_group_id}]
+            if missing_templates:
+                mass_add["templates"] = missing_templates
+            if len(mass_add) > 1:
+                self.call("host.massadd", mass_add)
+            return {
+                "status": "updated",
+                "hostid": host["hostid"],
+                "hostname": hostname,
+                "dns": dns,
+                "ip": ip_address,
+                "useip": 1 if ip_address else 0,
             }
-            if template_ids:
-                mass_add["templates"] = template_ids
-            self.call("host.massadd", mass_add)
-            return {"status": "updated", "hostid": host["hostid"], "hostname": hostname, "dns": dns}
 
-        result = self.create_host(hostname, dns, port)
+        result = self.create_host(hostname, dns, port, ip_address)
         host_ids = result.get("hostids", [])
         return {
             "status": "created",
             "hostid": host_ids[0] if host_ids else None,
             "hostname": hostname,
             "dns": dns,
+            "ip": ip_address,
+            "useip": 1 if ip_address else 0,
         }
 
     def setup_demo_hosts(self) -> list:
         results = []
         for host in DEMO_HOSTS:
-            result = self.ensure_host(host["hostname"], host["dns"])
+            ip_address = resolve_compose_service_ip(host["dns"])
+            result = None
+            last_error = None
+            for attempt in range(3):
+                try:
+                    result = self.ensure_host(host["hostname"], host["dns"], ip_address=ip_address)
+                    break
+                except Exception as exc:
+                    last_error = exc
+                    if attempt < 2:
+                        time.sleep(2)
+            if result is None:
+                result = {
+                    "status": "error",
+                    "hostname": host["hostname"],
+                    "dns": host["dns"],
+                    "ip": ip_address,
+                    "message": str(last_error),
+                }
+            elif not ip_address:
+                result["warning"] = (
+                    f"Compose service '{host['dns']}' has no running container IP; "
+                    "the interface is using Docker DNS fallback"
+                )
             result["role"] = host["role"]
             results.append(result)
         return results
@@ -406,12 +501,17 @@ def main():
                 detail = f"availability={target['availability']} agent.ping={target['agent_ping']}"
                 if target.get("error"):
                     detail += f" error={target['error']}"
-                print(f"  [{target['health']}] {target['hostname']} ({target['dns']}:10050; {detail})")
+                print(f"  [{target['health']}] {target['hostname']} ({target['endpoint']}:10050; {detail})")
 
         elif args.action == "fix-agent":
             result = api.fix_agent_interface(args.dns)
             if result.get("status") == "ok":
-                print(f"[OK] Successfully updated host interface for '{result.get('host')}' to connect via DNS '{result.get('dns')}:10050'.")
+                endpoint_label = "IP" if result.get("useip") else "DNS"
+                endpoint = result.get("ip") or result.get("dns")
+                print(
+                    f"[OK] Successfully updated host interface for '{result.get('host')}' "
+                    f"to connect via {endpoint_label} '{endpoint}:10050'."
+                )
             else:
                 print(f"[ERROR] {result.get('message')}")
 
@@ -440,10 +540,16 @@ def main():
             print(f"\n--- Demo Host Provisioning ({len(results)} hosts) ---")
             for result in results:
                 state = result.get("status", "unknown").upper()
+                endpoint_label = "IP" if result.get("useip") else "DNS"
+                endpoint = result.get("ip") or result.get("dns")
+                message = f" error={result.get('message')}" if result.get("message") else ""
+                warning = f" warning={result.get('warning')}" if result.get("warning") else ""
                 print(
                     f"  [{state}] {result.get('hostname')} — {result.get('role')} "
-                    f"(DNS: {result.get('dns')}:10050)"
+                    f"({endpoint_label}: {endpoint}:10050){message}{warning}"
                 )
+            if any(result.get("status") == "error" for result in results):
+                sys.exit(1)
 
     except Exception as e:
         print(f"[ERROR] {e}", file=sys.stderr)

@@ -258,16 +258,53 @@ def test_zabbix_existing_host_reconciliation_uses_host_massadd(monkeypatch):
     monkeypatch.setattr(api, "call", fake_call)
     monkeypatch.setattr(api, "get_linux_template_ids", lambda: [{"templateid": "10001"}])
     monkeypatch.setattr(api, "get_demo_group_id", lambda: "30001")
-    result = api.ensure_host("NHMF Application Server", "zabbix-agent-application")
+    result = api.ensure_host(
+        "NHMF Application Server",
+        "zabbix-agent-application",
+        ip_address="172.30.0.12",
+    )
 
     assert result["status"] == "updated"
-    assert any(method == "hostinterface.update" for method, _params in calls)
+    host_get = next(params for method, params in calls if method == "host.get")
+    assert {"type", "main"} <= set(host_get["selectInterfaces"])
+    interface_update = next(params for method, params in calls if method == "hostinterface.update")
+    assert interface_update["ip"] == "172.30.0.12"
+    assert interface_update["useip"] == 1
+    assert not any(method == "hostinterface.create" for method, _params in calls)
     massadd = next(params for method, params in calls if method == "host.massadd")
     assert massadd == {
         "hosts": [{"hostid": "10101"}],
         "groups": [{"groupid": "30001"}],
         "templates": [{"templateid": "10001"}],
     }
+
+
+def test_zabbix_demo_provisioning_continues_after_one_host_error(monkeypatch):
+    manager = load_module("scripts/zabbix_api_manager.py", "zabbix_provisioning_retry_test")
+    api = manager.ZabbixAPI()
+    attempts = {}
+
+    monkeypatch.setattr(manager, "resolve_compose_service_ip", lambda dns: f"172.30.0.{len(dns) % 100 + 10}")
+    monkeypatch.setattr(manager.time, "sleep", lambda _seconds: None)
+
+    def fake_ensure(hostname, dns, port="10050", ip_address=None):
+        attempts[hostname] = attempts.get(hostname, 0) + 1
+        if hostname == "Zabbix server":
+            raise RuntimeError("simulated first-host API failure")
+        return {
+            "status": "created",
+            "hostname": hostname,
+            "dns": dns,
+            "ip": ip_address,
+            "useip": 1,
+        }
+
+    monkeypatch.setattr(api, "ensure_host", fake_ensure)
+    results = api.setup_demo_hosts()
+    assert len(results) == 7
+    assert results[0]["status"] == "error"
+    assert attempts["Zabbix server"] == 3
+    assert {result["status"] for result in results[1:]} == {"created"}
 
 
 def test_zabbix_native_health_requires_available_interface_and_fresh_agent_ping(monkeypatch):

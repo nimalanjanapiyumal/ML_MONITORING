@@ -26,21 +26,13 @@ echo " NHMF — Zabbix Infrastructure Manager"
 echo " Endpoint: $ZABBIX_URL | Action: $ACTION"
 echo "============================================================"
 
-# Wait for Zabbix Web to be responsive
-echo -n "Checking Zabbix API availability... "
-for i in {1..20}; do
-  if curl -fsS "$ZABBIX_URL" >/dev/null 2>&1; then
-    echo "READY"
-    break
-  fi
-  echo -n "."
-  sleep 2
-done
+echo "Checking Zabbix API availability (up to 60 seconds)..."
 
 python3 "$SCRIPT_DIR/zabbix_api_manager.py" \
   --url "$ZABBIX_URL" \
   --user "$ZABBIX_USER" \
   --password "$ZABBIX_PASSWORD" \
+  --wait-seconds 60 \
   "$ACTION" "${@:2}"
 
 echo "============================================================"
