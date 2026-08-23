@@ -43,8 +43,16 @@ def test_zabbix_demo_servers_are_deployed_and_probed():
         "zabbix-agent-security",
     }
     assert expected_agents <= services.keys()
-    assert "setup-demo-hosts" in services["zabbix-provisioner"]["command"]
-    assert services["suricata-demo-generator"]["profiles"] == ["demo"]
+    assert "zabbix-provisioner" not in services
+    assert "suricata-demo-generator" not in services
+
+    start_source = (PROJECT_ROOT / "scripts" / "start_stack.sh").read_text(encoding="utf-8")
+    assert "setup-demo-hosts" in start_source
+    demo_source = (PROJECT_ROOT / "scripts" / "fault_injection" / "demo_scenarios.sh").read_text(
+        encoding="utf-8"
+    )
+    assert "inject_suricata_demo_events.py" in demo_source
+    assert "docker compose cp" in demo_source
 
     prometheus = load_yaml("configs/prometheus/prometheus.yml")
     jobs = {job["job_name"]: job for job in prometheus["scrape_configs"]}

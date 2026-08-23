@@ -155,8 +155,14 @@ def inject_events(scenario: str, eve_path: Path = EVE_JSON_PATH) -> int:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("scenario", choices=[*ALERT_SCENARIOS, "all"])
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=EVE_JSON_PATH,
+        help="EVE JSON destination (default: EVE_JSON_PATH or /var/log/suricata/eve.json)",
+    )
     args = parser.parse_args()
-    count = inject_events(args.scenario)
+    count = inject_events(args.scenario, args.output)
     print(f"[OK] Injected {count} synthetic Suricata EVE events for scenario '{args.scenario}'.")
 
 

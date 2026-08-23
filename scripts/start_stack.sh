@@ -218,7 +218,11 @@ check_url "Suricata Exporter" "http://localhost:9517/health" 60 "suricata-export
 if command -v python3 >/dev/null 2>&1; then
   echo ""
   echo "Reconciling the four Zabbix monitored servers..."
-  python3 "$PROJECT_ROOT/scripts/zabbix_api_manager.py" setup-demo-hosts 2>/dev/null || true
+  if ! python3 "$PROJECT_ROOT/scripts/zabbix_api_manager.py" setup-demo-hosts; then
+    echo "[WARN] Zabbix host reconciliation did not complete. Re-run: ./scripts/setup_zabbix.sh setup-demo-hosts" >&2
+  fi
+else
+  echo "[WARN] python3 is unavailable; Zabbix host reconciliation was skipped." >&2
 fi
 
 echo ""

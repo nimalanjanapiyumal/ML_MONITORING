@@ -122,24 +122,6 @@ services:
     networks:
       - monitoring
 
-  suricata-demo-generator:
-    image: python:3.12-alpine
-    profiles: ["demo"]
-    restart: "no"
-    environment:
-      EVE_JSON_PATH: /var/log/suricata/eve.json
-    entrypoint: ["python", "/app/inject_suricata_demo_events.py"]
-    volumes:
-      - ./scripts/fault_injection/inject_suricata_demo_events.py:/app/inject_suricata_demo_events.py:ro
-      - suricata-data:/var/log/suricata
-    depends_on:
-      suricata:
-        condition: service_started
-      suricata-exporter:
-        condition: service_started
-    networks:
-      - monitoring
-
   portal:
     image: nginx:1.27-alpine
     restart: unless-stopped
@@ -305,35 +287,6 @@ services:
       ZBX_HOSTNAME: "NHMF Security Server"
     depends_on:
       - zabbix-server
-    networks:
-      - monitoring
-
-  zabbix-provisioner:
-    image: python:3.12-alpine
-    restart: "no"
-    environment:
-      ZABBIX_URL: http://zabbix-web:8080/api_jsonrpc.php
-      ZABBIX_ADMIN_USER: ${ZABBIX_ADMIN_USER:-Admin}
-      ZABBIX_ADMIN_PASSWORD: ${ZABBIX_ADMIN_PASSWORD:-zabbix}
-    command:
-      - python
-      - /app/zabbix_api_manager.py
-      - --wait-seconds
-      - "180"
-      - setup-demo-hosts
-    volumes:
-      - ./scripts/zabbix_api_manager.py:/app/zabbix_api_manager.py:ro
-    depends_on:
-      zabbix-web:
-        condition: service_healthy
-      zabbix-agent:
-        condition: service_started
-      zabbix-agent-application:
-        condition: service_started
-      zabbix-agent-database:
-        condition: service_started
-      zabbix-agent-security:
-        condition: service_started
     networks:
       - monitoring
 

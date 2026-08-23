@@ -291,7 +291,7 @@ Grafana is pre-provisioned with 4 dashboards located in the **NHMF** folder:
 
 Zabbix 7.0 LTS is fully integrated with automated JSON-RPC API tooling:
 
-On first startup, `zabbix-provisioner` idempotently registers the core `Zabbix server` plus `NHMF Application Server`, `NHMF Database Server`, and `NHMF Security Server` with the Linux agent template.
+After Zabbix Web becomes ready, the startup script uses the host Python runtime to idempotently register the core `Zabbix server` plus `NHMF Application Server`, `NHMF Database Server`, and `NHMF Security Server` with the Linux agent template. This avoids pulling an extra utility image during startup.
 
 ### Managing Zabbix via CLI
 

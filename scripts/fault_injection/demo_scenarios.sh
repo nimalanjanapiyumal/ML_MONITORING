@@ -81,7 +81,23 @@ run_outage() {
 
 run_suricata_demo() {
   local demo_case="$1"
-  docker compose --profile demo run --rm --no-deps suricata-demo-generator "$demo_case"
+  local event_file
+  event_file="$(mktemp)"
+
+  if ! python3 "$PROJECT_ROOT/scripts/fault_injection/inject_suricata_demo_events.py" \
+    "$demo_case" --output "$event_file"; then
+    rm -f "$event_file"
+    return 1
+  fi
+
+  if ! docker compose cp "$event_file" suricata:/tmp/nhmf-demo-events.json; then
+    rm -f "$event_file"
+    return 1
+  fi
+  rm -f "$event_file"
+
+  docker compose exec -T suricata sh -c \
+    'cat /tmp/nhmf-demo-events.json >> /var/log/suricata/eve.json && rm -f /tmp/nhmf-demo-events.json'
   echo -e "${GREEN}[OK] Synthetic EVE records submitted. Allow up to 15 seconds for Prometheus and Grafana refresh.${NC}"
 }
 

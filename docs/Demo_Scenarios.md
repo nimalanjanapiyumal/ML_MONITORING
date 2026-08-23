@@ -1,6 +1,6 @@
 # NHMF Demonstration Scenarios
 
-The demonstration suite provides repeatable evidence for healthy, watch, warning, and risk states. Availability scenarios stop only the named lab container, keep a recovery trap active, and restart it after the selected duration. IDS signature scenarios write deterministic synthetic EVE records through the `demo` Compose profile, avoiding dependence on loopback routing or an external scan target.
+The demonstration suite provides repeatable evidence for healthy, watch, warning, and risk states. Availability scenarios stop only the named lab container, keep a recovery trap active, and restart it after the selected duration. IDS signature scenarios generate deterministic synthetic EVE records with the host Python runtime and copy them into the running Suricata container, avoiding dependence on an extra Docker image, loopback routing, or an external scan target.
 
 ## Visual state policy
 
