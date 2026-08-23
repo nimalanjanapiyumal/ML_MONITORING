@@ -53,6 +53,12 @@ def test_zabbix_demo_servers_are_deployed_and_probed():
     )
     assert "inject_suricata_demo_events.py" in demo_source
     assert "docker compose cp" in demo_source
+    for agent_name in expected_agents:
+        environment = services[agent_name]["environment"]
+        assert environment["ZBX_PASSIVE_ALLOW"] == "true"
+        assert environment["ZBX_PASSIVESERVERS"] == "zabbix-server"
+        assert environment["ZBX_ACTIVE_ALLOW"] == "true"
+        assert environment["ZBX_ACTIVESERVERS"] == "zabbix-server:10051"
 
     prometheus = load_yaml("configs/prometheus/prometheus.yml")
     jobs = {job["job_name"]: job for job in prometheus["scrape_configs"]}
@@ -127,6 +133,16 @@ def test_zabbix_dashboard_never_defaults_missing_services_to_online():
     assert "zabbix-server:10051" in panel_by_title(dashboard, "Zabbix Server Daemon")["targets"][0]["expr"]
     assert "zabbix-db:3306" in panel_by_title(dashboard, "Zabbix MySQL Database")["targets"][0]["expr"]
     assert panel_by_title(dashboard, "Healthy Zabbix Servers")["targets"][0]["expr"].startswith("count(probe_success")
+    all_targets = panel_by_title(dashboard, "All Zabbix Targets — Health Timeline")
+    assert all_targets["type"] == "state-timeline"
+    assert len(all_targets["targets"]) == 7
+    fleet = panel_by_title(dashboard, "Monitored Server Availability Timeline")
+    assert {target["legendFormat"] for target in fleet["targets"]} == {
+        "Core Monitoring Server",
+        "Application Server",
+        "Database Server",
+        "Security Server",
+    }
 
 
 def test_outage_alerts_and_demo_scenarios_cover_suricata_and_zabbix():
@@ -195,13 +211,14 @@ def test_zabbix_existing_host_reconciliation_uses_host_massadd(monkeypatch):
                     "hostid": "10101",
                     "host": "NHMF Application Server",
                     "name": "NHMF Application Server",
-                    "interfaces": [{"interfaceid": "20202"}],
+                    "interfaces": [{"interfaceid": "20202", "type": "1", "main": "1"}],
                 }
             ]
         return {}
 
     monkeypatch.setattr(api, "call", fake_call)
     monkeypatch.setattr(api, "get_linux_template_ids", lambda: [{"templateid": "10001"}])
+    monkeypatch.setattr(api, "get_demo_group_id", lambda: "30001")
     result = api.ensure_host("NHMF Application Server", "zabbix-agent-application")
 
     assert result["status"] == "updated"
@@ -209,8 +226,55 @@ def test_zabbix_existing_host_reconciliation_uses_host_massadd(monkeypatch):
     massadd = next(params for method, params in calls if method == "host.massadd")
     assert massadd == {
         "hosts": [{"hostid": "10101"}],
+        "groups": [{"groupid": "30001"}],
         "templates": [{"templateid": "10001"}],
     }
+
+
+def test_zabbix_native_health_requires_available_interface_and_fresh_agent_ping(monkeypatch):
+    manager = load_module("scripts/zabbix_api_manager.py", "zabbix_native_health_test")
+    api = manager.ZabbixAPI()
+    now = int(time.time())
+    hosts = []
+    ping_items = []
+    for index, demo_host in enumerate(manager.DEMO_HOSTS, start=1):
+        host_id = str(10000 + index)
+        hosts.append(
+            {
+                "hostid": host_id,
+                "host": demo_host["hostname"],
+                "name": demo_host["hostname"],
+                "status": "0",
+                "interfaces": [
+                    {
+                        "interfaceid": str(20000 + index),
+                        "type": "1",
+                        "main": "1",
+                        "available": "1",
+                        "error": "",
+                    }
+                ],
+            }
+        )
+        ping_items.append(
+            {
+                "hostid": host_id,
+                "key_": "agent.ping",
+                "state": "0",
+                "lastvalue": "1",
+                "lastclock": str(now),
+                "error": "",
+            }
+        )
+
+    monkeypatch.setattr(api, "get_hosts", lambda: hosts)
+    monkeypatch.setattr(api, "call", lambda method, _params=None: ping_items if method == "item.get" else {})
+    health = api.get_demo_host_health()
+    assert {target["health"] for target in health} == {"HEALTHY"}
+
+    hosts[2]["interfaces"][0]["available"] = "2"
+    health = api.get_demo_host_health()
+    assert health[2]["health"] == "RISK / DOWN"
 
 
 def test_suricata_demo_generator_populates_every_dashboard_event_type(tmp_path):

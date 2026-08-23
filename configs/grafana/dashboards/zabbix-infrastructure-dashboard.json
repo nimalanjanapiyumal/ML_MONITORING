@@ -450,13 +450,17 @@
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
       "id": 8,
       "options": {
-        "legend": { "calcs": ["lastNotNull"], "displayMode": "table", "placement": "bottom" },
+        "alignValue": "left",
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "mergeValues": true,
+        "rowHeight": 0.75,
+        "showValue": "auto",
         "tooltip": { "mode": "single", "sort": "none" }
       },
       "targets": [
         {
           "expr": "probe_success{job=\"blackbox-http\", target=~\"http://zabbix-web:8080.*\"}",
-          "legendFormat": "HTTP Health Probe (zabbix-web:8080)",
+          "legendFormat": "Zabbix Web UI / API :8080",
           "refId": "A"
         },
         {
@@ -470,13 +474,28 @@
           "refId": "C"
         },
         {
-          "expr": "probe_success{job=\"blackbox-tcp\", target=~\"zabbix-agent.*:10050\"}",
-          "legendFormat": "{{ target }}",
+          "expr": "probe_success{job=\"blackbox-tcp\", target=\"zabbix-agent:10050\"}",
+          "legendFormat": "Core Server Agent :10050",
           "refId": "D"
+        },
+        {
+          "expr": "probe_success{job=\"blackbox-tcp\", target=\"zabbix-agent-application:10050\"}",
+          "legendFormat": "Application Server Agent :10050",
+          "refId": "E"
+        },
+        {
+          "expr": "probe_success{job=\"blackbox-tcp\", target=\"zabbix-agent-database:10050\"}",
+          "legendFormat": "Database Server Agent :10050",
+          "refId": "F"
+        },
+        {
+          "expr": "probe_success{job=\"blackbox-tcp\", target=\"zabbix-agent-security:10050\"}",
+          "legendFormat": "Security Server Agent :10050",
+          "refId": "G"
         }
       ],
-      "title": "Zabbix Component Availability Timeline",
-      "type": "timeseries"
+      "title": "All Zabbix Targets — Health Timeline",
+      "type": "state-timeline"
     },
     {
       "collapsed": false,
@@ -783,9 +802,24 @@
       },
       "targets": [
         {
-          "expr": "probe_success{job=\"blackbox-tcp\", target=~\"zabbix-agent.*:10050\"}",
-          "legendFormat": "{{ target }}",
+          "expr": "probe_success{job=\"blackbox-tcp\", target=\"zabbix-agent:10050\"}",
+          "legendFormat": "Core Monitoring Server",
           "refId": "A"
+        },
+        {
+          "expr": "probe_success{job=\"blackbox-tcp\", target=\"zabbix-agent-application:10050\"}",
+          "legendFormat": "Application Server",
+          "refId": "B"
+        },
+        {
+          "expr": "probe_success{job=\"blackbox-tcp\", target=\"zabbix-agent-database:10050\"}",
+          "legendFormat": "Database Server",
+          "refId": "C"
+        },
+        {
+          "expr": "probe_success{job=\"blackbox-tcp\", target=\"zabbix-agent-security:10050\"}",
+          "legendFormat": "Security Server",
+          "refId": "D"
         }
       ],
       "title": "Monitored Server Availability Timeline",

@@ -23,7 +23,7 @@ A dedicated Grafana dashboard is pre-provisioned at:
 
 Features:
 - Live service status indicators for Zabbix Web, Server Daemon, and MySQL Database.
-- A four-server availability timeline with correct healthy and unavailable counts.
+- A seven-target component timeline plus a named four-server availability timeline with correct healthy and unavailable counts.
 - HTTP & ICMP response latency breakdown (connect time, PHP-FPM processing, RTT).
 - Host CPU utilization, I/O wait, memory distribution, filesystem space, and network interface throughput.
 - Instant cross-links to the native Zabbix Web UI, Operations Dashboard, ML Dashboard, and Suricata IDS.
@@ -44,12 +44,17 @@ NHMF includes an automated API management suite in `scripts/`:
 # Idempotently reconcile all four bundled demonstration servers
 ./scripts/setup_zabbix.sh setup-demo-hosts
 
+# Show every registered host plus native interface availability and agent.ping health
+./scripts/setup_zabbix.sh status
+
 # Inspect current active problems & triggers
 ./scripts/setup_zabbix.sh problems
 
 # List all available templates
 ./scripts/setup_zabbix.sh templates
 ```
+
+The four bundled servers are grouped under **NHMF Monitored Servers** in Zabbix. Open **Data collection → Hosts** and filter by that group to see each agent interface and its native ZBX availability indicator.
 
 ---
 

@@ -23,6 +23,7 @@ DEMO_HOSTS = (
     {"hostname": "NHMF Database Server", "dns": "zabbix-agent-database", "role": "Database tier"},
     {"hostname": "NHMF Security Server", "dns": "zabbix-agent-security", "role": "Suricata/security tier"},
 )
+DEMO_GROUP_NAME = "NHMF Monitored Servers"
 
 
 class ZabbixAPI:
@@ -72,9 +73,95 @@ class ZabbixAPI:
             "host.get",
             {
                 "output": ["hostid", "host", "name", "status"],
-                "selectInterfaces": ["interfaceid", "ip", "dns", "useip", "port", "type", "main"],
+                "selectInterfaces": [
+                    "interfaceid",
+                    "ip",
+                    "dns",
+                    "useip",
+                    "port",
+                    "type",
+                    "main",
+                    "available",
+                    "error",
+                ],
             },
         )
+
+    def get_demo_host_health(self) -> list:
+        """Return native Zabbix agent availability and agent.ping state for the demo fleet."""
+        hosts_by_name = {host.get("host"): host for host in self.get_hosts()}
+        host_ids = [
+            hosts_by_name[demo_host["hostname"]]["hostid"]
+            for demo_host in DEMO_HOSTS
+            if demo_host["hostname"] in hosts_by_name
+        ]
+        items = []
+        if host_ids:
+            items = self.call(
+                "item.get",
+                {
+                    "output": ["itemid", "hostid", "name", "key_", "status", "state", "lastvalue", "lastclock", "error"],
+                    "hostids": host_ids,
+                    "filter": {"key_": ["agent.ping"]},
+                },
+            )
+        ping_by_host = {item.get("hostid"): item for item in items}
+        current_time = int(time.time())
+        health_rows = []
+
+        for demo_host in DEMO_HOSTS:
+            hostname = demo_host["hostname"]
+            host = hosts_by_name.get(hostname)
+            if not host:
+                health_rows.append(
+                    {
+                        **demo_host,
+                        "health": "NOT REGISTERED",
+                        "availability": "UNKNOWN",
+                        "agent_ping": "NO DATA",
+                        "error": "Host is missing from Zabbix",
+                    }
+                )
+                continue
+
+            interfaces = host.get("interfaces", [])
+            agent_interface = next(
+                (interface for interface in interfaces if str(interface.get("type")) == "1" and str(interface.get("main")) == "1"),
+                next((interface for interface in interfaces if str(interface.get("type")) == "1"), interfaces[0] if interfaces else {}),
+            )
+            availability_value = str(agent_interface.get("available", "0"))
+            availability = {"0": "PENDING", "1": "AVAILABLE", "2": "UNAVAILABLE"}.get(
+                availability_value, "UNKNOWN"
+            )
+            ping_item = ping_by_host.get(host["hostid"], {})
+            last_value = str(ping_item.get("lastvalue", ""))
+            item_state = str(ping_item.get("state", "0"))
+            try:
+                last_clock = int(ping_item.get("lastclock", 0) or 0)
+            except (TypeError, ValueError):
+                last_clock = 0
+            ping_fresh = last_clock > 0 and current_time - last_clock <= 300
+
+            if str(host.get("status")) != "0":
+                health = "DISABLED"
+            elif availability_value == "1" and last_value == "1" and item_state == "0" and ping_fresh:
+                health = "HEALTHY"
+            elif availability_value == "2" or item_state == "1":
+                health = "RISK / DOWN"
+            else:
+                health = "PENDING"
+
+            health_rows.append(
+                {
+                    **demo_host,
+                    "health": health,
+                    "availability": availability,
+                    "agent_ping": "1" if last_value == "1" else "NO DATA",
+                    "lastclock": last_clock,
+                    "error": agent_interface.get("error") or ping_item.get("error") or "",
+                }
+            )
+        return health_rows
 
     def get_templates(self, pattern: str = "Linux") -> list:
         return self.call(
@@ -97,6 +184,19 @@ class ZabbixAPI:
             return groups[0]["groupid"]
         all_groups = self.get_host_groups()
         return all_groups[0]["groupid"] if all_groups else "2"
+
+    def get_demo_group_id(self) -> str:
+        groups = self.call(
+            "hostgroup.get",
+            {"output": ["groupid", "name"], "filter": {"name": [DEMO_GROUP_NAME]}},
+        )
+        if groups:
+            return groups[0]["groupid"]
+        result = self.call("hostgroup.create", {"name": DEMO_GROUP_NAME})
+        group_ids = result.get("groupids", [])
+        if not group_ids:
+            raise RuntimeError(f"Zabbix did not return an ID for host group '{DEMO_GROUP_NAME}'")
+        return group_ids[0]
 
     def get_linux_template_ids(self) -> list:
         templates = self.get_templates("Linux")
@@ -136,7 +236,11 @@ class ZabbixAPI:
         if not interfaces:
             return {"status": "error", "message": "No interfaces found on host"}
 
-        iface_id = interfaces[0]["interfaceid"]
+        agent_interface = next(
+            (interface for interface in interfaces if str(interface.get("type")) == "1" and str(interface.get("main")) == "1"),
+            next((interface for interface in interfaces if str(interface.get("type")) == "1"), interfaces[0]),
+        )
+        iface_id = agent_interface["interfaceid"]
         res = self.call(
             "hostinterface.update",
             {
@@ -146,6 +250,7 @@ class ZabbixAPI:
                 "port": "10050",
             },
         )
+        self.call("host.update", {"hostid": host["hostid"], "status": 0})
         return {
             "status": "ok",
             "host": host.get("name", "Zabbix server"),
@@ -155,6 +260,7 @@ class ZabbixAPI:
         }
 
     def create_host(self, hostname: str, dns: str = "zabbix-agent", port: str = "10050") -> dict:
+        group_ids = {self.get_linux_group_id(), self.get_demo_group_id()}
         return self.call(
             "host.create",
             {
@@ -169,7 +275,7 @@ class ZabbixAPI:
                         "port": port,
                     }
                 ],
-                "groups": [{"groupid": self.get_linux_group_id()}],
+                "groups": [{"groupid": group_id} for group_id in sorted(group_ids)],
                 "templates": self.get_linux_template_ids(),
             },
         )
@@ -186,22 +292,42 @@ class ZabbixAPI:
         if existing:
             host = existing[0]
             interfaces = host.get("interfaces", [])
-            if interfaces:
+            agent_interface = next(
+                (interface for interface in interfaces if str(interface.get("type")) == "1" and str(interface.get("main")) == "1"),
+                next((interface for interface in interfaces if str(interface.get("type")) == "1"), None),
+            )
+            if agent_interface:
                 self.call(
                     "hostinterface.update",
                     {
-                        "interfaceid": interfaces[0]["interfaceid"],
+                        "interfaceid": agent_interface["interfaceid"],
                         "dns": dns,
                         "useip": 0,
                         "port": port,
                     },
                 )
-            template_ids = self.get_linux_template_ids()
-            if template_ids:
+            else:
                 self.call(
-                    "host.massadd",
-                    {"hosts": [{"hostid": host["hostid"]}], "templates": template_ids},
+                    "hostinterface.create",
+                    {
+                        "hostid": host["hostid"],
+                        "type": 1,
+                        "main": 1,
+                        "useip": 0,
+                        "ip": "127.0.0.1",
+                        "dns": dns,
+                        "port": port,
+                    },
                 )
+            self.call("host.update", {"hostid": host["hostid"], "status": 0})
+            template_ids = self.get_linux_template_ids()
+            mass_add = {
+                "hosts": [{"hostid": host["hostid"]}],
+                "groups": [{"groupid": self.get_demo_group_id()}],
+            }
+            if template_ids:
+                mass_add["templates"] = template_ids
+            self.call("host.massadd", mass_add)
             return {"status": "updated", "hostid": host["hostid"], "hostname": hostname, "dns": dns}
 
         result = self.create_host(hostname, dns, port)
@@ -216,12 +342,8 @@ class ZabbixAPI:
     def setup_demo_hosts(self) -> list:
         results = []
         for host in DEMO_HOSTS:
-            if host["hostname"] == "Zabbix server":
-                result = self.fix_agent_interface(host["dns"], host["hostname"])
-                result.update({"hostname": host["hostname"], "role": host["role"]})
-            else:
-                result = self.ensure_host(host["hostname"], host["dns"])
-                result["role"] = host["role"]
+            result = self.ensure_host(host["hostname"], host["dns"])
+            result["role"] = host["role"]
             results.append(result)
         return results
 
@@ -275,6 +397,13 @@ def main():
                 ifaces = h.get("interfaces", [])
                 iface_info = f"DNS={ifaces[0].get('dns')} IP={ifaces[0].get('ip')} Port={ifaces[0].get('port')}" if ifaces else "No iface"
                 print(f"    - Host: {h.get('name')} [{status_str}] ({iface_info})")
+
+            print("\n--- Native Zabbix Agent Health ---")
+            for target in api.get_demo_host_health():
+                detail = f"availability={target['availability']} agent.ping={target['agent_ping']}"
+                if target.get("error"):
+                    detail += f" error={target['error']}"
+                print(f"  [{target['health']}] {target['hostname']} ({target['dns']}:10050; {detail})")
 
         elif args.action == "fix-agent":
             result = api.fix_agent_interface(args.dns)

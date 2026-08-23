@@ -73,11 +73,33 @@ except Exception as e:
 ' 2>/dev/null || echo "Could not query Prometheus targets"
 
 echo ""
-echo "[5] Suricata IDS Metrics Sample:"
+echo "[5] Monitored Endpoint Health (real probe result):"
+curl -fsSG --data-urlencode "query=probe_success" "http://localhost:9090/api/v1/query" 2>/dev/null | python3 -c '
+import sys, json
+try:
+    payload = json.load(sys.stdin)
+    results = payload.get("data", {}).get("result", [])
+    healthy = 0
+    down = 0
+    for result in sorted(results, key=lambda item: item.get("metric", {}).get("target", "")):
+        target = result.get("metric", {}).get("target", "unknown")
+        job = result.get("metric", {}).get("job", "unknown")
+        value = float(result.get("value", [0, "0"])[1])
+        state = "HEALTHY" if value == 1 else "RISK / DOWN"
+        healthy += value == 1
+        down += value != 1
+        print(f"  - [{state}] {target} ({job})")
+    print(f"Probe totals: {healthy} healthy, {down} unavailable, {len(results)} total")
+except Exception as exc:
+    print(f"Could not parse endpoint health: {exc}")
+' || echo "Could not query probe health"
+
+echo ""
+echo "[6] Suricata IDS Metrics Sample:"
 curl -fsS "http://localhost:9517/metrics" 2>/dev/null | grep -E '^suricata_(sensor_health|alerts_total|alerts_last_window|stats_uptime_seconds|stats_kernel_drop_ratio_percent|flow_bytes_total)' | head -n 12 || echo "Suricata metrics not yet reporting"
 
 echo ""
-echo "[6] ML Anomaly Detection State:"
+echo "[7] ML Anomaly Detection State:"
 curl -fsS "http://localhost:8000/results" 2>/dev/null | python3 -c '
 import sys, json
 try:
@@ -95,8 +117,8 @@ except Exception as e:
 ' 2>/dev/null || echo "Could not query ML results"
 
 echo ""
-echo "[7] Zabbix Registered Server Fleet:"
-python3 "$PROJECT_ROOT/scripts/zabbix_api_manager.py" status 2>/dev/null || echo "Could not query the Zabbix API"
+echo "[8] Zabbix Registered Server Fleet and Native Agent Health:"
+python3 "$PROJECT_ROOT/scripts/zabbix_api_manager.py" status || echo "Could not query the Zabbix API"
 
 echo ""
 echo "============================================================"

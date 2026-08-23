@@ -238,8 +238,10 @@ services:
     environment:
       ZBX_SERVER_HOST: zabbix-server
       ZBX_SERVER_PORT: 10051
-      ZBX_PASSIVE_ALLOW: 0.0.0.0/0
-      ZBX_ACTIVE_ALLOW: zabbix-server
+      ZBX_PASSIVE_ALLOW: "true"
+      ZBX_PASSIVESERVERS: zabbix-server
+      ZBX_ACTIVE_ALLOW: "true"
+      ZBX_ACTIVESERVERS: zabbix-server:10051
       ZBX_HOSTNAME: "Zabbix server"
     ports:
       - "10050:10050"
@@ -254,8 +256,10 @@ services:
     environment:
       ZBX_SERVER_HOST: zabbix-server
       ZBX_SERVER_PORT: 10051
-      ZBX_PASSIVE_ALLOW: 0.0.0.0/0
-      ZBX_ACTIVE_ALLOW: zabbix-server
+      ZBX_PASSIVE_ALLOW: "true"
+      ZBX_PASSIVESERVERS: zabbix-server
+      ZBX_ACTIVE_ALLOW: "true"
+      ZBX_ACTIVESERVERS: zabbix-server:10051
       ZBX_HOSTNAME: "NHMF Application Server"
     depends_on:
       - zabbix-server
@@ -268,8 +272,10 @@ services:
     environment:
       ZBX_SERVER_HOST: zabbix-server
       ZBX_SERVER_PORT: 10051
-      ZBX_PASSIVE_ALLOW: 0.0.0.0/0
-      ZBX_ACTIVE_ALLOW: zabbix-server
+      ZBX_PASSIVE_ALLOW: "true"
+      ZBX_PASSIVESERVERS: zabbix-server
+      ZBX_ACTIVE_ALLOW: "true"
+      ZBX_ACTIVESERVERS: zabbix-server:10051
       ZBX_HOSTNAME: "NHMF Database Server"
     depends_on:
       - zabbix-server
@@ -282,8 +288,10 @@ services:
     environment:
       ZBX_SERVER_HOST: zabbix-server
       ZBX_SERVER_PORT: 10051
-      ZBX_PASSIVE_ALLOW: 0.0.0.0/0
-      ZBX_ACTIVE_ALLOW: zabbix-server
+      ZBX_PASSIVE_ALLOW: "true"
+      ZBX_PASSIVESERVERS: zabbix-server
+      ZBX_ACTIVE_ALLOW: "true"
+      ZBX_ACTIVESERVERS: zabbix-server:10051
       ZBX_HOSTNAME: "NHMF Security Server"
     depends_on:
       - zabbix-server

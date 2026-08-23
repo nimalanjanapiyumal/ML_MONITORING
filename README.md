@@ -305,6 +305,9 @@ After Zabbix Web becomes ready, the startup script uses the host Python runtime 
 # Reconcile all four bundled demonstration hosts and Docker DNS interfaces
 ./scripts/setup_zabbix.sh setup-demo-hosts
 
+# Display native agent availability and agent.ping state for all four servers
+./scripts/setup_zabbix.sh status
+
 # Inspect current active problem triggers
 ./scripts/setup_zabbix.sh problems
 
@@ -322,7 +325,7 @@ After Zabbix Web becomes ready, the startup script uses the host Python runtime 
 Test alert triggers, ML reaction, and dashboard response using the built-in simulation suite:
 
 ### 1. Demonstrate Suricata Security Events
-The primary demo path appends deterministic synthetic EVE records through a demo-only container, so every dashboard view works without scanning a live target:
+The primary demo path generates deterministic synthetic EVE records with host Python and copies them into the running Suricata container, so every dashboard view works without scanning a live target or pulling an extra utility image:
 
 ```bash
 # Populate all alert, flow, DNS, TLS, SSH, and anomaly views

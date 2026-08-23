@@ -161,7 +161,7 @@ if (-not $pythonCommand) {
 if ($pythonCommand) {
     Write-Host ""
     Write-Host "Reconciling the four Zabbix monitored servers..."
-    & $pythonCommand.Path (Join-Path $PSScriptRoot "zabbix_api_manager.py") setup-demo-hosts
+    & $pythonCommand.Path (Join-Path $PSScriptRoot "zabbix_api_manager.py") --wait-seconds 120 setup-demo-hosts
     if ($LASTEXITCODE -ne 0) {
         Write-Warning "Zabbix host reconciliation did not complete. Re-run: python scripts\zabbix_api_manager.py setup-demo-hosts"
     }
