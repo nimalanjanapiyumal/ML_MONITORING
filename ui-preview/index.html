@@ -121,7 +121,7 @@
             </a>
             <a class="service-card" data-service-link="grafana-zabbix" href="#">
               <span class="service-code">ZD</span>
-              <span><strong>Zabbix dashboard</strong><small>Four monitored server agents and core services</small></span>
+              <span><strong>Zabbix dashboard</strong><small>Seven native Zabbix server states and core services</small></span>
               <i class="service-indicator" data-service-status="zabbix"></i>
             </a>
             <a class="service-card" data-service-link="suricata-ids" href="#">
@@ -188,6 +188,71 @@
             <button class="button danger" id="cancelSimulation" type="button" disabled>Stop simulation</button>
           </div>
         </article>
+      </section>
+
+      <section class="section-block">
+        <div class="section-heading">
+          <div>
+            <p class="section-kicker">Native Zabbix API data</p>
+            <h2>Seven monitored server roles</h2>
+          </div>
+          <a class="button secondary" data-service-link="grafana-zabbix" href="#">Open Zabbix dashboard</a>
+        </div>
+
+        <div class="metric-grid zabbix-summary-grid">
+          <article class="metric-card" id="zabbixHealthyCard" data-state="neutral">
+            <span class="metric-label">Healthy</span>
+            <strong id="zabbixHealthyCount">-- / 7</strong>
+            <small>Native state 2 / green</small>
+          </article>
+          <article class="metric-card" id="zabbixWarningCard" data-state="neutral">
+            <span class="metric-label">Warning or pending</span>
+            <strong id="zabbixWarningCount">--</strong>
+            <small>Native state 1 / yellow</small>
+          </article>
+          <article class="metric-card" id="zabbixRiskCard" data-state="neutral">
+            <span class="metric-label">Risk or down</span>
+            <strong id="zabbixRiskCount">--</strong>
+            <small>Native state 0 / red</small>
+          </article>
+        </div>
+
+        <div class="zabbix-workspace">
+          <article class="panel table-panel">
+            <div class="panel-heading">
+              <div>
+                <p class="section-kicker">Same source used by Grafana</p>
+                <h3>Current Zabbix host output</h3>
+              </div>
+              <span class="panel-note" id="zabbixApiState">Waiting for Zabbix API</span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Server role</th><th>Zabbix host</th><th>Agent endpoint</th><th>State</th></tr></thead>
+                <tbody id="zabbixFleetBody">
+                  <tr><td colspan="4" class="empty-cell">Waiting for native Zabbix data</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </article>
+
+          <article class="panel scenario-catalog">
+            <div class="panel-heading">
+              <div>
+                <p class="section-kicker">Real, automatically restored outages</p>
+                <h3>Zabbix and Suricata demo scenarios</h3>
+              </div>
+            </div>
+            <p class="scenario-note">Run these on the Ubuntu VM. Each command now prints before, during, and recovery evidence.</p>
+            <div class="scenario-command-list">
+              <code>./scripts/fault_injection/demo_scenarios.sh zabbix-application-outage 210</code>
+              <code>./scripts/fault_injection/demo_scenarios.sh zabbix-multi-server-outage 210</code>
+              <code>./scripts/fault_injection/demo_scenarios.sh suricata-sensor-outage 150</code>
+              <code>./scripts/fault_injection/demo_scenarios.sh suricata-full-outage 150</code>
+              <code>./scripts/fault_injection/demo_scenarios.sh suricata-threats-all</code>
+            </div>
+          </article>
+        </div>
       </section>
 
       <section class="section-block">
@@ -312,6 +377,6 @@
     </main>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script src="./app.js?v=3"></script>
+    <script src="./app.js?v=4"></script>
   </body>
 </html>

@@ -236,17 +236,37 @@ groups:
           description: "The Zabbix MySQL database is not accepting TCP connections on port 3306."
 
       - alert: ZabbixAgentUnreachable
-        expr: probe_success{job="blackbox-tcp", target=~"zabbix-agent.*:10050"} == 0
+        expr: zabbix_native_host_health == 0
         for: 2m
         labels:
           severity: critical
           category: zabbix
         annotations:
           summary: "Zabbix monitored server agent is unreachable"
-          description: "The agent endpoint {{ $labels.target }} is not accepting TCP connections on port 10050."
+          description: "Native Zabbix data marks {{ $labels.host }} ({{ $labels.role }}) as down, disabled, not registered, or unsupported by current agent data."
+
+      - alert: ZabbixAgentPending
+        expr: zabbix_native_host_health == 1
+        for: 5m
+        labels:
+          severity: warning
+          category: zabbix
+        annotations:
+          summary: "Zabbix monitored server is pending"
+          description: "{{ $labels.host }} is registered but its Zabbix interface or agent.ping item is not yet confirmed healthy."
+
+      - alert: ZabbixNativeAPIUnavailable
+        expr: zabbix_native_api_up == 0
+        for: 2m
+        labels:
+          severity: critical
+          category: zabbix
+        annotations:
+          summary: "Native Zabbix data collection is unavailable"
+          description: "Grafana cannot authenticate to or read the Zabbix API through the NHMF collector."
 
       - alert: ZabbixFleetDegraded
-        expr: count(probe_success{job="blackbox-tcp", target=~"zabbix-agent.*:10050"} == 0) >= 2 and count(probe_success{job="blackbox-tcp", target=~"zabbix-agent.*:10050"} == 0) < 4
+        expr: count(zabbix_native_host_health == 0) >= 2 and count(zabbix_native_host_health == 0) < 4
         for: 1m
         labels:
           severity: warning
@@ -256,7 +276,7 @@ groups:
           description: "Between two and three of the seven monitored server agents are unreachable. The fleet is degraded."
 
       - alert: ZabbixFleetCritical
-        expr: count(probe_success{job="blackbox-tcp", target=~"zabbix-agent.*:10050"} == 0) >= 4
+        expr: count(zabbix_native_host_health == 0) >= 4
         for: 1m
         labels:
           severity: critical

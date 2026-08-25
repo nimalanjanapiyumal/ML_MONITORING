@@ -49,7 +49,9 @@ check_url "ML Anomaly API"        "http://localhost:8000/health"
 check_url "Operations Portal"     "http://localhost:8088"
 check_url "Suricata Exporter"     "http://localhost:9517/-/healthy"
 check_url "Suricata Sensor"       "http://localhost:9517/health"
+check_url "Suricata Status Data"  "http://localhost:9517/status"
 check_url "Zabbix Web"            "http://localhost:8080"
+check_url "Native Zabbix Data"    "http://localhost:8000/zabbix-health"
 
 echo ""
 echo "[3] Grafana Dashboards Provisioned:"
@@ -97,6 +99,8 @@ except Exception as exc:
 echo ""
 echo "[6] Suricata IDS Metrics Sample:"
 curl -fsS "http://localhost:9517/metrics" 2>/dev/null | grep -E '^suricata_(sensor_health|alerts_total|alerts_last_window|stats_uptime_seconds|stats_kernel_drop_ratio_percent|flow_bytes_total)' | head -n 12 || echo "Suricata metrics not yet reporting"
+echo "Suricata readable status:"
+curl -fsS "http://localhost:9517/status" 2>/dev/null | python3 -m json.tool 2>/dev/null || echo "Suricata status did not respond"
 
 echo ""
 echo "[7] ML Anomaly Detection State:"
@@ -118,7 +122,22 @@ except Exception as e:
 
 echo ""
 echo "[8] Zabbix Registered Server Fleet and Native Agent Health:"
+curl -fsS "http://localhost:8000/zabbix-health?refresh=true" 2>/dev/null | python3 -c '
+import json, sys
+payload = json.load(sys.stdin)
+summary = payload.get("summary", {})
+print("Grafana native collector: API={} registered={}/{} healthy={} warning={} risk/down={}".format(
+    "UP" if payload.get("api_up") else "DOWN",
+    summary.get("registered", 0), summary.get("total", 7), summary.get("healthy", 0),
+    summary.get("warning", 0), summary.get("risk_down", 0)))
+for host in payload.get("hosts", []):
+    print("  - [{}] {} ({})".format(host.get("state"), host.get("role"), host.get("host")))
+' || echo "Could not query the native Zabbix data used by Grafana"
 python3 "$PROJECT_ROOT/scripts/zabbix_api_manager.py" status || echo "Could not query the Zabbix API"
+
+echo ""
+echo "[9] Demo Scenario Coverage:"
+bash "$PROJECT_ROOT/scripts/fault_injection/demo_scenarios.sh" list | grep -E 'outage|suricata-(scan|icmp|http|c2|threats-all)' || echo "Could not list demo scenarios"
 
 echo ""
 echo "============================================================"

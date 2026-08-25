@@ -213,7 +213,8 @@ check_url "Grafana" "http://localhost:3000/api/health" 120 "grafana"
 check_url "ML anomaly API" "http://localhost:8000/health" 90 "ml-anomaly"
 check_url "Operations Portal" "http://localhost:8088" 90 "portal"
 check_url "Zabbix Web" "http://localhost:8080" 180 "zabbix-web"
-check_url "Suricata Exporter" "http://localhost:9517/health" 60 "suricata-exporter"
+check_url "Suricata Exporter" "http://localhost:9517/-/healthy" 60 "suricata-exporter"
+check_url "Suricata Sensor Data" "http://localhost:9517/health" 60 "suricata"
 
 if command -v curl >/dev/null 2>&1; then
   echo ""
@@ -233,6 +234,17 @@ else
   echo "[WARN] python3 is unavailable; Zabbix host reconciliation was skipped." >&2
 fi
 
+if command -v curl >/dev/null 2>&1; then
+  echo ""
+  echo "Native Zabbix server data supplied to Grafana:"
+  curl -fsS "http://localhost:8000/zabbix-health?refresh=true" 2>/dev/null | python3 -m json.tool 2>/dev/null || \
+    echo "[WARN] Native Zabbix data is not ready. Check: docker compose logs --tail 100 ml-anomaly zabbix-web" >&2
+  echo ""
+  echo "Suricata IDS response:"
+  curl -fsS "http://localhost:9517/status" 2>/dev/null | python3 -m json.tool 2>/dev/null || \
+    echo "[WARN] Suricata status is not ready. Check: docker compose logs --tail 100 suricata suricata-exporter" >&2
+fi
+
 echo ""
 echo "Services:"
 echo "Main Portal:          http://localhost:8088"
@@ -244,7 +256,9 @@ echo "Prometheus:           http://localhost:9090"
 echo "Alertmanager:         http://localhost:9093"
 echo "ML API:               http://localhost:8000/health"
 echo "Suricata Metrics:     http://localhost:9517/metrics"
+echo "Suricata Status:      http://localhost:9517/status"
 echo "Zabbix:               http://localhost:8080  Admin/zabbix"
+echo "Zabbix Native Data:   http://localhost:8000/zabbix-health"
 echo ""
 echo "Network interface monitored by Suricata: ${SURICATA_INTERFACE}"
 echo "To update Suricata rules:  ./scripts/update_suricata_rules.sh"

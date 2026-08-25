@@ -28,9 +28,11 @@ curl -fsS "http://localhost:9093/api/v2/alerts" | python3 -m json.tool > "$OUT/a
 # ML Anomaly Detection state
 curl -fsS "http://localhost:8000/results" | python3 -m json.tool > "$OUT/ml_results.json" 2>&1 || true
 curl -fsS "http://localhost:8000/metrics" > "$OUT/ml_metrics_raw.txt" 2>&1 || true
+curl -fsS "http://localhost:8000/zabbix-health?refresh=true" | python3 -m json.tool > "$OUT/zabbix_native_health.json" 2>&1 || true
 
 # Suricata IDS metrics & eve-log sample
 curl -fsS "http://localhost:9517/metrics" > "$OUT/suricata_metrics_raw.txt" 2>&1 || true
+curl -fsS "http://localhost:9517/status" | python3 -m json.tool > "$OUT/suricata_status.json" 2>&1 || true
 docker compose exec -T suricata tail -n 100 /var/log/suricata/eve.json > "$OUT/suricata_eve_sample.json" 2>&1 || true
 docker compose exec -T suricata tail -n 50 /var/log/suricata/fast.log > "$OUT/suricata_fast_sample.log" 2>&1 || true
 
@@ -48,6 +50,12 @@ SERVICES=(
   zabbix-server
   zabbix-web
   zabbix-agent
+  zabbix-agent-application
+  zabbix-agent-database
+  zabbix-agent-security
+  zabbix-agent-web
+  zabbix-agent-api
+  zabbix-agent-backup
 )
 
 for service in "${SERVICES[@]}"; do

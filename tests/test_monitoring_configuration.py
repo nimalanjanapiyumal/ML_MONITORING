@@ -132,6 +132,10 @@ def test_suricata_dashboard_reports_sensor_freshness_and_capture_drop_ratio():
     assert '"suricata_sensor_health"' in exporter_source
     assert '"suricata_stats_kernel_drop_ratio_percent"' in exporter_source
     assert "SENSOR_STALE_AFTER_SECONDS" in exporter_source
+    assert 'elif path == "/status"' in exporter_source
+    compose = load_yaml("docker-compose.yml")
+    assert "--af-packet=${SURICATA_INTERFACE:-eth0}" in compose["services"]["suricata"]["command"]
+    assert "--init-errors-fatal" not in compose["services"]["suricata"]["command"]
 
 
 def test_zabbix_dashboard_never_defaults_missing_services_to_online():
@@ -141,11 +145,16 @@ def test_zabbix_dashboard_never_defaults_missing_services_to_online():
     assert "or vector(1)" not in dashboard_text
     assert "zabbix-server:10051" in panel_by_title(dashboard, "Zabbix Server Daemon")["targets"][0]["expr"]
     assert "zabbix-db:3306" in panel_by_title(dashboard, "Zabbix MySQL Database")["targets"][0]["expr"]
-    assert panel_by_title(dashboard, "Healthy Zabbix Servers")["targets"][0]["expr"].startswith("count(probe_success")
+    assert panel_by_title(dashboard, "Healthy Zabbix Servers")["targets"][0]["expr"] == (
+        "count(zabbix_native_host_health == 2) or vector(0)"
+    )
+    assert panel_by_title(dashboard, "Unavailable Zabbix Servers")["targets"][0]["expr"] == (
+        "count(zabbix_native_host_health == 0) or vector(0)"
+    )
     all_targets = panel_by_title(dashboard, "All Zabbix Targets — Health Timeline")
     assert all_targets["type"] == "state-timeline"
     assert len(all_targets["targets"]) == 10
-    fleet = panel_by_title(dashboard, "Monitored Server Availability Timeline")
+    fleet = panel_by_title(dashboard, "Native Zabbix Server Health Timeline")
     assert {target["legendFormat"] for target in fleet["targets"]} == {
         "Core Monitoring Server",
         "Application Server",
@@ -155,6 +164,13 @@ def test_zabbix_dashboard_never_defaults_missing_services_to_online():
         "API Server",
         "Backup Server",
     }
+    assert all(target["expr"].startswith("zabbix_native_host_health") for target in fleet["targets"])
+    mappings = fleet["fieldConfig"]["defaults"]["mappings"][0]["options"]
+    assert [(mappings[value]["color"], mappings[value]["text"]) for value in ("0", "1", "2")] == [
+        ("red", "RISK / DOWN"),
+        ("yellow", "WARNING / PENDING"),
+        ("green", "HEALTHY"),
+    ]
     assert panel_by_title(dashboard, "Healthy Zabbix Servers")["fieldConfig"]["defaults"]["max"] == 7
     assert panel_by_title(dashboard, "Unavailable Zabbix Servers")["fieldConfig"]["defaults"]["max"] == 7
     healthy_steps = panel_by_title(dashboard, "Healthy Zabbix Servers")["fieldConfig"]["defaults"]["thresholds"]["steps"]
@@ -187,6 +203,8 @@ def test_outage_alerts_and_demo_scenarios_cover_suricata_and_zabbix():
         "ZabbixServerUnreachable",
         "ZabbixDatabaseUnreachable",
         "ZabbixAgentUnreachable",
+        "ZabbixAgentPending",
+        "ZabbixNativeAPIUnavailable",
         "ZabbixFleetDegraded",
         "ZabbixFleetCritical",
     } <= alert_names
@@ -210,6 +228,16 @@ def test_outage_alerts_and_demo_scenarios_cover_suricata_and_zabbix():
         "zabbix-fleet-outage",
     ):
         assert scenario in demo_source
+    assert "DURING OUTAGE — FINAL" in demo_source
+    assert "alerts_in_window" in demo_source
+    assert "zabbix-health?refresh=true" in demo_source
+
+    portal_html = (PROJECT_ROOT / "ui-preview" / "index.html").read_text(encoding="utf-8")
+    portal_js = (PROJECT_ROOT / "ui-preview" / "app.js").read_text(encoding="utf-8")
+    assert 'id="zabbixFleetBody"' in portal_html
+    assert "zabbix-application-outage 210" in portal_html
+    assert "suricata-full-outage 150" in portal_html
+    assert "updateZabbixFleet(data.zabbix)" in portal_js
 
 
 def test_suricata_stats_values_and_sensor_freshness(tmp_path, monkeypatch):

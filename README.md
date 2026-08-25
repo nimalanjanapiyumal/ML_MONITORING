@@ -75,13 +75,13 @@ The framework operates across 6 integrated functional layers:
 | **Prometheus** | `9090` | `http://localhost:9090/-/healthy` | None | TSDB metric aggregation and rule evaluation |
 | **Alertmanager** | `9093` | `http://localhost:9093/-/healthy` | None | Alert routing, grouping, and webhook notifications |
 | **ML Anomaly API** | `8000` | `http://localhost:8000/health` | None | FastAPI anomaly scoring engine & metrics (`/metrics`) |
-| **Suricata Exporter** | `9517` | `http://localhost:9517/health` | None | EVE-JSON tailer exporting IDS metrics (`/metrics`) |
+| **Suricata Exporter** | `9517` | `http://localhost:9517/status` | None | EVE-JSON tailer exporting IDS metrics (`/metrics`) and readable sensor status |
 | **Node Exporter** | `9100` | `http://localhost:9100/metrics` | None | Host CPU, RAM, Disk, and Network telemetry |
 | **Blackbox Exporter** | `9115` | `http://localhost:9115/probe` | None | ICMP ping and HTTP health probes |
 | **Pushgateway** | `9091` | `http://localhost:9091/metrics` | None | Batch job and synthetic telemetry ingress |
 | **Zabbix Web** | `8080` | `http://localhost:8080` | `Admin` / `zabbix` | Optional enterprise NMS web interface |
 | **Zabbix Server** | `10051` | `localhost:10051` | Native | Zabbix trapper and poller daemon |
-| **Zabbix Agents** | `10050` | Docker-internal TCP endpoints | Native | Core, application, database, and security demo servers |
+| **Zabbix Agents** | `10050` | Docker-internal TCP endpoints | Native | Core, application, database, security, web, API, and backup demo servers |
 
 ---
 
@@ -248,7 +248,7 @@ Suricata streams security events into `/var/log/suricata/eve.json`. The **`suric
 
 ### Updating Threat Rules
 
-Suricata automatically loads the **Emerging Threats (ET) Open** ruleset alongside custom rules in `configs/suricata/rules/local.rules`. To update rules live without restarting containers:
+Suricata always loads the bundled custom rules in `configs/suricata/rules/local.rules` and loads the merged **Emerging Threats (ET) Open** `suricata.rules` file when present. To download or update that file live without restarting containers:
 
 ```bash
 ./scripts/update_suricata_rules.sh
@@ -283,7 +283,7 @@ Grafana is pre-provisioned with 4 dashboards located in the **NHMF** folder:
 3. **Suricata IDS Dashboard** (`/d/nhmf-suricata/`):
    - 20-panel threat monitoring view: Stacked alert rate timeline, top 15 signatures, protocol distribution, flow throughput, DNS record anomalies, TLS JA3 hashes, and HTTP status codes.
 4. **Zabbix Infrastructure & Host Dashboard** (`/d/nhmf-zabbix/`):
-   - Zabbix Web latency, Server and MySQL TCP health, CPU/Memory/Disk/Network metrics, active alerts, and a seven-server availability timeline.
+   - Zabbix Web latency, Server and MySQL TCP health, CPU/Memory/Disk/Network metrics, active alerts, and a seven-server timeline driven by native Zabbix interface and `agent.ping` data.
 
 ---
 
@@ -317,6 +317,8 @@ After Zabbix Web becomes ready, the startup script uses the host Python runtime 
 
 - **Web GUI:** [http://localhost:8080](http://localhost:8080) (`Admin` / `zabbix`)
 - **JSON-RPC API:** `http://localhost:8080/api_jsonrpc.php`
+- **Readable native data supplied to Grafana:** [http://localhost:8000/zabbix-health](http://localhost:8000/zabbix-health)
+- **Suricata sensor/exporter response:** [http://localhost:9517/status](http://localhost:9517/status)
 
 ---
 
@@ -334,6 +336,8 @@ The primary demo path generates deterministic synthetic EVE records with host Py
 # Populate one signature case: scan | icmp | http | c2
 ./scripts/fault_injection/demo_scenarios.sh suricata-scan
 ```
+
+The runner now verifies that the exporter processed new EVE records and prints the resulting event and alert counts. Outage scenarios print before, during, and after container evidence plus the same native Zabbix or Suricata status used by Grafana.
 
 For a real packet-capture test, `simulate_network_attacks.sh` remains available but must be given an explicitly authorized lab target reachable through the interface Suricata monitors.
 

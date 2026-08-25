@@ -92,10 +92,8 @@ services:
     environment:
       SURICATA_INTERFACE: ${SURICATA_INTERFACE:-eth0}
     command: >
-      -i ${SURICATA_INTERFACE:-eth0}
-      --af-packet
+      --af-packet=${SURICATA_INTERFACE:-eth0}
       -c /etc/suricata/suricata.yaml
-      --init-errors-fatal
       -v
     volumes:
       - ./configs/suricata/suricata.yaml:/etc/suricata/suricata.yaml:ro
@@ -151,6 +149,10 @@ services:
       CONFIG_PATH: /app/config.yaml
       UNSW_MODEL_PATH: /app/models/unsw_nb15_model.joblib
       UNSW_DATA_DIR: /Data/UNSW-NB15 dataset/CSV Files/Training and Testing Sets
+      ZABBIX_URL: http://zabbix-web:8080/api_jsonrpc.php
+      ZABBIX_ADMIN_USER: ${ZABBIX_ADMIN_USER:-Admin}
+      ZABBIX_ADMIN_PASSWORD: ${ZABBIX_ADMIN_PASSWORD:-zabbix}
+      ZABBIX_REFRESH_SECONDS: ${ZABBIX_REFRESH_SECONDS:-15}
     volumes:
       - ./ml-anomaly/config.yaml:/app/config.yaml:ro
       - ./ml-anomaly/models:/app/models

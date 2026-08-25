@@ -151,7 +151,8 @@ Test-Url -Name "Grafana" -Url "http://localhost:3000/api/health" -TimeoutSeconds
 Test-Url -Name "ML anomaly API" -Url "http://localhost:8000/health" -TimeoutSeconds 90 -ServiceName "ml-anomaly"
 Test-Url -Name "Operations Portal" -Url "http://localhost:8088" -TimeoutSeconds 90 -ServiceName "portal"
 Test-Url -Name "Zabbix Web" -Url "http://localhost:8080" -TimeoutSeconds 180 -ServiceName "zabbix-web"
-Test-Url -Name "Suricata Exporter" -Url "http://localhost:9517/health" -TimeoutSeconds 60 -ServiceName "suricata-exporter"
+Test-Url -Name "Suricata Exporter" -Url "http://localhost:9517/-/healthy" -TimeoutSeconds 60 -ServiceName "suricata-exporter"
+Test-Url -Name "Suricata Sensor Data" -Url "http://localhost:9517/health" -TimeoutSeconds 60 -ServiceName "suricata"
 
 Write-Host ""
 Write-Host "Reloading Prometheus targets and alert rules..."
@@ -178,6 +179,22 @@ if ($pythonCommand) {
 }
 
 Write-Host ""
+try {
+    $nativeZabbix = Invoke-RestMethod -Uri "http://localhost:8000/zabbix-health?refresh=true" -TimeoutSec 15
+    Write-Host "Native Zabbix data used by Grafana: registered=$($nativeZabbix.summary.registered)/7 healthy=$($nativeZabbix.summary.healthy) warning=$($nativeZabbix.summary.warning) risk/down=$($nativeZabbix.summary.risk_down)"
+    $nativeZabbix.hosts | Select-Object role, host, state, endpoint | Format-Table -AutoSize
+} catch {
+    Write-Warning "Native Zabbix data is not ready. Check ml-anomaly and zabbix-web logs."
+}
+
+try {
+    $suricataStatus = Invoke-RestMethod -Uri "http://localhost:9517/status" -TimeoutSec 10
+    Write-Host "Suricata IDS response: exporter=$($suricataStatus.exporter) sensor=$($suricataStatus.sensor) events=$($suricataStatus.events_processed)"
+} catch {
+    Write-Warning "Suricata status is not ready. Check suricata and suricata-exporter logs."
+}
+
+Write-Host ""
 Write-Host "============================================================"
 Write-Host " NHMF Services Ready"
 Write-Host "============================================================"
@@ -190,6 +207,8 @@ Write-Host "Prometheus:           http://localhost:9090"
 Write-Host "Alertmanager:         http://localhost:9093"
 Write-Host "ML API:               http://localhost:8000/health"
 Write-Host "Suricata Metrics:     http://localhost:9517/metrics"
+Write-Host "Suricata Status:      http://localhost:9517/status"
 Write-Host "Zabbix:               http://localhost:8080  (Admin/zabbix)"
+Write-Host "Zabbix Native Data:   http://localhost:8000/zabbix-health"
 Write-Host "Demo scenarios:       scripts/fault_injection/demo_scenarios.sh list"
 Write-Host "============================================================"

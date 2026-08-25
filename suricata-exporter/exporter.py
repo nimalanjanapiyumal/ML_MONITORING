@@ -208,6 +208,8 @@ capture_kernel_drop_ratio = Gauge(
 _alert_timestamps: deque[float] = deque()
 _alert_lock = threading.Lock()
 _last_stats_observed_at = 0.0
+_last_event_observed_at = 0.0
+_events_processed = 0
 
 
 def _record_alert_timestamp() -> None:
@@ -237,6 +239,25 @@ def _sensor_is_healthy(now: Optional[float] = None) -> bool:
         and observed_at - _last_stats_observed_at <= SENSOR_STALE_AFTER_SECONDS
     )
     return Path(EVE_JSON_PATH).exists() and stats_fresh
+
+
+def _status_payload() -> dict:
+    now = time.time()
+    with _alert_lock:
+        recent_alerts = len(_alert_timestamps)
+    return {
+        "exporter": "ok",
+        "sensor": "healthy" if _sensor_is_healthy(now) else "stale_or_unavailable",
+        "sensor_healthy": _sensor_is_healthy(now),
+        "eve_file": EVE_JSON_PATH,
+        "eve_file_available": Path(EVE_JSON_PATH).exists(),
+        "events_processed": _events_processed,
+        "alerts_in_window": recent_alerts,
+        "last_event_age_seconds": round(now - _last_event_observed_at, 3) if _last_event_observed_at else None,
+        "last_stats_age_seconds": round(now - _last_stats_observed_at, 3) if _last_stats_observed_at else None,
+        "sensor_stale_after_seconds": SENSOR_STALE_AFTER_SECONDS,
+        "rolling_window_seconds": ROLLING_WINDOW_SECONDS,
+    }
 
 
 def _update_sensor_health_gauges() -> None:
@@ -372,9 +393,10 @@ _HANDLERS = {
 
 def tail_eve_json(path: str) -> None:
     """
-    Tail the EVE-JSON file, seeking to the end first so we only process
-    new events. On rotation (file shrinks), reopen from the start.
+    Tail the EVE-JSON file. On rotation or truncation, reopen the file.
+    New events are always processed and exposed through /status and /metrics.
     """
+    global _events_processed, _last_event_observed_at
     p = Path(path)
     log.info("Waiting for EVE-JSON file: %s", path)
 
@@ -397,8 +419,15 @@ def tail_eve_json(path: str) -> None:
                     fh.close()
                     log.info("EVE file rotated — reopening")
                 fh = open(path, "r", encoding="utf-8", errors="replace")
-                # Seek to end so we don't replay old events on startup
+                # New events are consumed from this point. Current sensor stats
+                # arrive every eight seconds, so health becomes deterministic.
                 fh.seek(0, 2)
+                last_inode = current_inode
+
+            # Docker log volume files may be truncated without an inode change.
+            if p.exists() and p.stat().st_size < fh.tell():
+                fh.close()
+                fh = open(path, "r", encoding="utf-8", errors="replace")
                 last_inode = current_inode
 
             line = fh.readline()
@@ -418,7 +447,9 @@ def tail_eve_json(path: str) -> None:
                 continue
 
             event_type = evt.get("event_type", "unknown")
-            eve_last_event_timestamp.set(time.time())
+            _last_event_observed_at = time.time()
+            _events_processed += 1
+            eve_last_event_timestamp.set(_last_event_observed_at)
             eve_events_total.labels(event_type=event_type).inc()
 
             handler = _HANDLERS.get(event_type)
@@ -445,14 +476,15 @@ def tail_eve_json(path: str) -> None:
 
 class MetricsHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
-        if self.path in ("/metrics", "/metrics/"):
+        path = self.path.split("?", 1)[0]
+        if path in ("/metrics", "/metrics/"):
             data = generate_latest(registry)
             self.send_response(200)
             self.send_header("Content-Type", CONTENT_TYPE_LATEST)
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
             self.wfile.write(data)
-        elif self.path in ("/health", "/healthz"):
+        elif path in ("/health", "/healthz"):
             healthy = _sensor_is_healthy()
             body = b"ok" if healthy else b"suricata sensor stale or unavailable"
             self.send_response(200 if healthy else 503)
@@ -460,7 +492,14 @@ class MetricsHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
-        elif self.path == "/-/healthy":
+        elif path == "/status":
+            body = json.dumps(_status_payload(), sort_keys=True).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        elif path == "/-/healthy":
             body = b"ok"
             self.send_response(200)
             self.send_header("Content-Type", "text/plain")

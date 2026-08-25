@@ -51,3 +51,70 @@ def test_controlled_simulation_updates_portal_and_metrics(monkeypatch):
     stopped = app.cancel_attack_simulation()
     assert stopped["active"] is False
     assert app.STATE["results"] == []
+
+
+def test_native_zabbix_collection_publishes_all_server_health(monkeypatch):
+    configure_test_app(monkeypatch)
+    now = int(app.time.time())
+    hosts = []
+    items = []
+    for index, definition in enumerate(app.ZABBIX_DEMO_HOSTS, start=1):
+        host_id = str(10000 + index)
+        hosts.append(
+            {
+                "hostid": host_id,
+                "host": definition["host"],
+                "name": definition["host"],
+                "status": "0",
+                "interfaces": [
+                    {
+                        "type": "1",
+                        "main": "1",
+                        "available": "1",
+                        "useip": "0",
+                        "dns": definition["target"],
+                        "error": "",
+                    }
+                ],
+            }
+        )
+        items.append(
+            {
+                "hostid": host_id,
+                "key_": "agent.ping",
+                "state": "0",
+                "lastvalue": "1",
+                "lastclock": str(now),
+                "error": "",
+            }
+        )
+
+    def fake_zabbix_call(method, _params=None, _auth=None):
+        return {
+            "apiinfo.version": "7.0.27",
+            "user.login": "test-token",
+            "host.get": hosts,
+            "item.get": items,
+        }[method]
+
+    monkeypatch.setattr(app, "_zabbix_api_call", fake_zabbix_call)
+    state = app.refresh_zabbix_native_state()
+    metrics_text = app.metrics().body.decode("utf-8")
+
+    assert state["api_up"] is True
+    assert state["summary"] == {
+        "healthy": 7,
+        "warning": 0,
+        "risk_down": 0,
+        "registered": 7,
+        "total": 7,
+    }
+    assert {host["state"] for host in state["hosts"]} == {"HEALTHY"}
+    assert "zabbix_native_api_up 1.0" in metrics_text
+    assert metrics_text.count("zabbix_native_host_health{") == 7
+
+    hosts[2]["interfaces"][0]["available"] = "2"
+    state = app.refresh_zabbix_native_state()
+    assert state["summary"]["healthy"] == 6
+    assert state["summary"]["risk_down"] == 1
+    assert state["hosts"][2]["state"] == "RISK / DOWN"

@@ -21,7 +21,6 @@ fi
 
 echo "[INFO] Updating Emerging Threats Open ruleset inside container…"
 docker exec "$CONTAINER_NAME" suricata-update \
-  --no-merge \
   --suricata-conf /etc/suricata/suricata.yaml \
   --output /var/lib/suricata/rules
 

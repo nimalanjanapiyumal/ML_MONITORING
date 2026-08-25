@@ -16,7 +16,8 @@ The shared numeric boundaries are:
 - CPU, memory, and disk: green below 70%, yellow from 70%, orange from 85%, red from 95%.
 - ICMP/HTTP latency: green below 150 ms, yellow from 150 ms, orange from 200 ms, red from 500 ms.
 - ML anomaly score: green below 0.50, yellow from 0.50, orange from 0.65, red from 0.85.
-- Availability: `1` is healthy/green and `0` is risk/red.
+- General availability: `1` is healthy/green and `0` is risk/red.
+- Native Zabbix host health: `2` is healthy/green, `1` is warning or pending/yellow, and `0` is risk/down/red.
 
 ## Scenario matrix
 
@@ -57,7 +58,8 @@ Use at least 150 seconds for Prometheus alerts with a two-minute persistence per
 1. Start the stack and run `./scripts/validate_stack.sh` until all checks are healthy.
 2. Open the relevant Grafana dashboard and select a 15-minute time range.
 3. Run one scenario from the matrix. Keep outage scenarios active long enough to satisfy the alert `for` duration.
-4. Capture the color transition, firing alert, and target timeline.
-5. Wait for automatic recovery and confirm the value returns to `1`/green.
+4. Use the runner's before/during/after output as direct evidence; it reports the same native Zabbix or Suricata state consumed by Grafana.
+5. Capture the color transition, firing alert, and target timeline.
+6. Wait for automatic recovery and confirm general availability returns to `1`/green and native Zabbix health returns to `2`/green.
 
 These scripts are intended only for the isolated NHMF lab stack. They should not be pointed at systems you do not own or have permission to test.

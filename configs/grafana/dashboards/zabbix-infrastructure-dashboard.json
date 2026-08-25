@@ -782,14 +782,15 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "description": "TCP availability for seven server agents automatically registered in Zabbix: core, application, database, security, web, API, and backup.",
+      "description": "Native Zabbix API health for the seven registered server hosts. This uses Zabbix interface availability plus a fresh agent.ping item, rather than a separate TCP-only result.",
       "fieldConfig": {
         "defaults": {
           "mappings": [
             {
               "options": {
                 "0": { "color": "red", "text": "RISK / DOWN" },
-                "1": { "color": "green", "text": "HEALTHY" }
+                "1": { "color": "yellow", "text": "WARNING / PENDING" },
+                "2": { "color": "green", "text": "HEALTHY" }
               },
               "type": "value"
             }
@@ -798,7 +799,8 @@
             "mode": "absolute",
             "steps": [
               { "color": "red", "value": null },
-              { "color": "green", "value": 1 }
+              { "color": "yellow", "value": 1 },
+              { "color": "green", "value": 2 }
             ]
           },
           "unit": "short"
@@ -817,42 +819,42 @@
       },
       "targets": [
         {
-          "expr": "probe_success{job=\"blackbox-tcp\", target=\"zabbix-agent:10050\"}",
+          "expr": "zabbix_native_host_health{host=\"Zabbix server\"}",
           "legendFormat": "Core Monitoring Server",
           "refId": "A"
         },
         {
-          "expr": "probe_success{job=\"blackbox-tcp\", target=\"zabbix-agent-application:10050\"}",
+          "expr": "zabbix_native_host_health{host=\"NHMF Application Server\"}",
           "legendFormat": "Application Server",
           "refId": "B"
         },
         {
-          "expr": "probe_success{job=\"blackbox-tcp\", target=\"zabbix-agent-database:10050\"}",
+          "expr": "zabbix_native_host_health{host=\"NHMF Database Server\"}",
           "legendFormat": "Database Server",
           "refId": "C"
         },
         {
-          "expr": "probe_success{job=\"blackbox-tcp\", target=\"zabbix-agent-security:10050\"}",
+          "expr": "zabbix_native_host_health{host=\"NHMF Security Server\"}",
           "legendFormat": "Security Server",
           "refId": "D"
         },
         {
-          "expr": "probe_success{job=\"blackbox-tcp\", target=\"zabbix-agent-web:10050\"}",
+          "expr": "zabbix_native_host_health{host=\"NHMF Web Server\"}",
           "legendFormat": "Web Server",
           "refId": "E"
         },
         {
-          "expr": "probe_success{job=\"blackbox-tcp\", target=\"zabbix-agent-api:10050\"}",
+          "expr": "zabbix_native_host_health{host=\"NHMF API Server\"}",
           "legendFormat": "API Server",
           "refId": "F"
         },
         {
-          "expr": "probe_success{job=\"blackbox-tcp\", target=\"zabbix-agent-backup:10050\"}",
+          "expr": "zabbix_native_host_health{host=\"NHMF Backup Server\"}",
           "legendFormat": "Backup Server",
           "refId": "G"
         }
       ],
-      "title": "Monitored Server Availability Timeline",
+      "title": "Native Zabbix Server Health Timeline",
       "type": "state-timeline"
     },
     {
@@ -888,7 +890,7 @@
       },
       "targets": [
         {
-          "expr": "count(probe_success{job=\"blackbox-tcp\", target=~\"zabbix-agent.*:10050\"} == 1) or vector(0)",
+          "expr": "count(zabbix_native_host_health == 2) or vector(0)",
           "legendFormat": "Healthy / 7",
           "refId": "A"
         }
@@ -929,7 +931,7 @@
       },
       "targets": [
         {
-          "expr": "count(probe_success{job=\"blackbox-tcp\", target=~\"zabbix-agent.*:10050\"} == 0) or vector(0)",
+          "expr": "count(zabbix_native_host_health == 0) or vector(0)",
           "legendFormat": "Unavailable / 7",
           "refId": "A"
         }
@@ -949,5 +951,5 @@
   "timezone": "browser",
   "title": "Zabbix Infrastructure & Host Dashboard",
   "uid": "nhmf-zabbix",
-  "version": 1
+  "version": 2
 }

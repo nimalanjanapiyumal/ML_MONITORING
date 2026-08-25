@@ -487,6 +487,40 @@ select {
   gap: 3px;
 }
 
+.zabbix-summary-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-bottom: 18px;
+}
+
+.zabbix-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(300px, 0.8fr);
+  gap: 18px;
+}
+
+.scenario-note {
+  color: var(--muted);
+  line-height: 1.55;
+  margin: 0 0 14px;
+}
+
+.scenario-command-list {
+  display: grid;
+  gap: 10px;
+}
+
+.scenario-command-list code {
+  background: rgba(2, 9, 22, 0.72);
+  border: 1px solid rgba(125, 211, 252, 0.14);
+  border-radius: 9px;
+  color: var(--cyan);
+  display: block;
+  font-size: 0.76rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  padding: 10px 11px;
+}
+
 .simulation-footer small {
   color: var(--muted);
 }
@@ -761,7 +795,8 @@ td {
   }
 
   .workspace-grid,
-  .ml-workspace {
+  .ml-workspace,
+  .zabbix-workspace {
     grid-template-columns: 1fr;
   }
 
@@ -802,6 +837,7 @@ td {
 
   .overview-grid,
   .ml-metric-grid,
+  .zabbix-summary-grid,
   .service-grid,
   .simulation-options,
   .rationale-grid,

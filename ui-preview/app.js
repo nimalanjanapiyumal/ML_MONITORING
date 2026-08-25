@@ -157,6 +157,46 @@ function updateSimulation(simulation = {}) {
   });
 }
 
+function updateZabbixFleet(zabbix = {}) {
+  const summary = zabbix.summary || {};
+  const hosts = Array.isArray(zabbix.hosts) ? zabbix.hosts : [];
+  const healthy = finiteNumber(summary.healthy) ?? 0;
+  const warning = finiteNumber(summary.warning) ?? 0;
+  const risk = finiteNumber(summary.risk_down) ?? 0;
+  element("zabbixHealthyCount").textContent = `${healthy} / 7`;
+  element("zabbixWarningCount").textContent = String(warning);
+  element("zabbixRiskCount").textContent = String(risk);
+  element("zabbixApiState").textContent = zabbix.api_up
+    ? `Zabbix API ${zabbix.version || "connected"}`
+    : `API unavailable${zabbix.error ? `: ${zabbix.error}` : ""}`;
+  setCardState("zabbixHealthyCard", healthy === 7 ? "normal" : healthy >= 5 ? "watch" : "critical");
+  setCardState("zabbixWarningCard", warning === 0 ? "normal" : warning === 1 ? "watch" : "warning");
+  setCardState("zabbixRiskCard", risk === 0 ? "normal" : risk < 3 ? "warning" : "critical");
+
+  const body = element("zabbixFleetBody");
+  body.replaceChildren();
+  if (!hosts.length) {
+    body.innerHTML = '<tr><td colspan="4" class="empty-cell">No native Zabbix host output is available</td></tr>';
+    return;
+  }
+  hosts.forEach((host) => {
+    const row = document.createElement("tr");
+    const stateClass = host.health_level === 2 ? "normal" : host.health_level === 1 ? "watch" : "critical";
+    [host.role, host.host, host.endpoint].forEach((value) => {
+      const cell = document.createElement("td");
+      cell.textContent = value || "--";
+      row.appendChild(cell);
+    });
+    const stateCell = document.createElement("td");
+    const tag = document.createElement("span");
+    tag.className = `severity-tag ${stateClass}`;
+    tag.textContent = host.state || "UNKNOWN";
+    stateCell.appendChild(tag);
+    row.appendChild(stateCell);
+    body.appendChild(row);
+  });
+}
+
 function updateMlCards(data) {
   const ml = data.ml || {};
   const operations = data.operations || {};
@@ -307,6 +347,7 @@ function updatePortal(data) {
   setConnection(data.status === "ok" ? "healthy" : "degraded", data.status === "ok" ? "Live" : "Degraded");
   updateOperationCards(data);
   updateSimulation(data.simulation);
+  updateZabbixFleet(data.zabbix);
   updateMlCards(data);
   updateMlTable(data.ml?.results || []);
   updateServiceIndicators(data.services);

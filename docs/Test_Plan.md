@@ -67,5 +67,6 @@ scripts/fault_injection/demo_scenarios.sh list
 - ML API `/results` output
 - Docker container status
 - Exported evidence folder
-- Zabbix seven-server fleet before, during, and after an outage
+- Native Zabbix `/zabbix-health` output and seven-server fleet before, during, and after an outage
+- Suricata `/status` output and verified new-event count for a detection scenario
 - Suricata sensor-only, exporter-only, and complete-outage screenshots

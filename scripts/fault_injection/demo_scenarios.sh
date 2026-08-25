@@ -76,6 +76,45 @@ validate_duration() {
   fi
 }
 
+show_zabbix_native_snapshot() {
+  echo "Native Zabbix host state (the same values used by Grafana):"
+  curl -fsS "http://localhost:8000/zabbix-health?refresh=true" 2>/dev/null | python3 -c '
+import json, sys
+payload = json.load(sys.stdin)
+summary = payload.get("summary", {})
+api_state = "UP" if payload.get("api_up") else "DOWN"
+print("  API={}; registered={}/7; healthy={}; warning={}; risk/down={}".format(api_state, summary.get("registered", 0), summary.get("healthy", 0), summary.get("warning", 0), summary.get("risk_down", 0)))
+for host in payload.get("hosts", []):
+    print("  - [{}] {} ({})".format(host.get("state", "UNKNOWN"), host.get("role"), host.get("host")))
+' || echo "  [NO DATA] Native Zabbix collector did not respond. Check: docker compose logs --tail 100 ml-anomaly zabbix-web"
+}
+
+show_suricata_snapshot() {
+  echo "Suricata IDS state (the same values used by Grafana):"
+  curl -fsS "http://localhost:9517/status" 2>/dev/null | python3 -c '
+import json, sys
+payload = json.load(sys.stdin)
+eve_state = "available" if payload.get("eve_file_available") else "missing"
+print("  Exporter={}; sensor={}; EVE file={}".format(payload.get("exporter", "unknown"), payload.get("sensor", "unknown"), eve_state))
+print("  Processed events={}; alerts in window={}; last stats age={}".format(payload.get("events_processed", 0), payload.get("alerts_in_window", 0), payload.get("last_stats_age_seconds")))
+' || echo "  [NO DATA] Suricata exporter did not respond. Check: docker compose logs --tail 100 suricata suricata-exporter"
+}
+
+show_outage_snapshot() {
+  local phase="$1"
+  shift
+  local services=("$@")
+  echo ""
+  echo -e "${BLUE}[${phase}] Container evidence:${NC}"
+  docker compose ps --all --format "table {{.Service}}\t{{.Status}}" "${services[@]}" 2>/dev/null || true
+  case " ${services[*]} " in
+    *" zabbix"*) show_zabbix_native_snapshot ;;
+  esac
+  case " ${services[*]} " in
+    *" suricata"*) show_suricata_snapshot ;;
+  esac
+}
+
 run_outage() {
   local service="$1"
   local observation="$2"
@@ -89,11 +128,21 @@ run_outage() {
 
   echo -e "${BLUE}[SCENARIO] Stopping ${service} for ${DURATION} seconds.${NC}"
   echo "Expected observation: ${observation}"
+  show_outage_snapshot "BEFORE" "$service"
   docker compose stop "$service"
   echo -e "${RED}[OUTAGE ACTIVE] Open Grafana and wait for the configured alert persistence period.${NC}"
-  sleep "$DURATION"
+  local evidence_delay=30
+  (( DURATION < evidence_delay )) && evidence_delay="$DURATION"
+  sleep "$evidence_delay"
+  show_outage_snapshot "DURING OUTAGE" "$service"
+  if (( DURATION > evidence_delay )); then
+    sleep "$((DURATION - evidence_delay))"
+    show_outage_snapshot "DURING OUTAGE — FINAL" "$service"
+  fi
   restore_service
   trap - EXIT INT TERM
+  sleep 8
+  show_outage_snapshot "AFTER RECOVERY" "$service"
   echo -e "${GREEN}[RECOVERED] ${service} was restarted. Confirm the dashboard returns to green.${NC}"
 }
 
@@ -111,18 +160,40 @@ run_multi_outage() {
 
   echo -e "${BLUE}[SCENARIO] Stopping ${services[*]} for ${DURATION} seconds.${NC}"
   echo "Expected observation: ${observation}"
+  show_outage_snapshot "BEFORE" "${services[@]}"
   docker compose stop "${services[@]}"
   echo -e "${RED}[OUTAGE ACTIVE] Open the relevant dashboard and observe each named target.${NC}"
-  sleep "$DURATION"
+  local evidence_delay=30
+  (( DURATION < evidence_delay )) && evidence_delay="$DURATION"
+  sleep "$evidence_delay"
+  show_outage_snapshot "DURING OUTAGE" "${services[@]}"
+  if (( DURATION > evidence_delay )); then
+    sleep "$((DURATION - evidence_delay))"
+    show_outage_snapshot "DURING OUTAGE — FINAL" "${services[@]}"
+  fi
   restore_services
   trap - EXIT INT TERM
+  sleep 8
+  show_outage_snapshot "AFTER RECOVERY" "${services[@]}"
   echo -e "${GREEN}[RECOVERED] All scenario services were restarted. Confirm every target returns to green.${NC}"
 }
 
 run_suricata_demo() {
   local demo_case="$1"
   local event_file
+  local before_events
+  local before_alerts
   event_file="$(mktemp)"
+
+  if ! curl -fsS "http://localhost:9517/-/healthy" >/dev/null 2>&1; then
+    echo "[FAILED] Suricata exporter is not responding. Start it before running a detection scenario." >&2
+    echo "Check: docker compose logs --tail 100 suricata suricata-exporter" >&2
+    rm -f "$event_file"
+    return 1
+  fi
+  before_events="$(curl -fsS "http://localhost:9517/status" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("events_processed", 0))')"
+  before_alerts="$(curl -fsS "http://localhost:9517/status" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("alerts_in_window", 0))')"
+  show_suricata_snapshot
 
   if ! python3 "$PROJECT_ROOT/scripts/fault_injection/inject_suricata_demo_events.py" \
     "$demo_case" --output "$event_file"; then
@@ -138,7 +209,26 @@ run_suricata_demo() {
 
   docker compose exec -T suricata sh -c \
     'cat /tmp/nhmf-demo-events.json >> /var/log/suricata/eve.json && rm -f /tmp/nhmf-demo-events.json'
-  echo -e "${GREEN}[OK] Synthetic EVE records submitted. Allow up to 15 seconds for Prometheus and Grafana refresh.${NC}"
+
+  local observed_events="$before_events"
+  local observed_alerts="$before_alerts"
+  local waited=0
+  while (( waited < 20 )); do
+    sleep 2
+    waited=$((waited + 2))
+    observed_events="$(curl -fsS "http://localhost:9517/status" 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin).get("events_processed", 0))' 2>/dev/null || echo 0)"
+    observed_alerts="$(curl -fsS "http://localhost:9517/status" 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin).get("alerts_in_window", 0))' 2>/dev/null || echo 0)"
+    if (( observed_events > before_events && observed_alerts > before_alerts )); then
+      show_suricata_snapshot
+      echo -e "${GREEN}[VERIFIED] Suricata exporter processed $((observed_events - before_events)) new EVE records and $((observed_alerts - before_alerts)) new IDS alerts. Grafana will refresh within 15 seconds.${NC}"
+      return 0
+    fi
+  done
+
+  show_suricata_snapshot
+  echo -e "${RED}[FAILED] Events were written but the exporter did not process them within 20 seconds.${NC}" >&2
+  echo "Check: docker compose logs --tail 100 suricata suricata-exporter" >&2
+  return 1
 }
 
 case "$SCENARIO" in
