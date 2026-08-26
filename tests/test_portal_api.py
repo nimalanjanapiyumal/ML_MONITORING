@@ -107,14 +107,63 @@ def test_native_zabbix_collection_publishes_all_server_health(monkeypatch):
         "warning": 0,
         "risk_down": 0,
         "registered": 7,
+        "active": 7,
+        "deactivated": 0,
         "total": 7,
     }
     assert {host["state"] for host in state["hosts"]} == {"HEALTHY"}
     assert "zabbix_native_api_up 1.0" in metrics_text
     assert metrics_text.count("zabbix_native_host_health{") == 7
+    assert metrics_text.count("zabbix_native_host_enabled{") == 7
 
     hosts[2]["interfaces"][0]["available"] = "2"
     state = app.refresh_zabbix_native_state()
     assert state["summary"]["healthy"] == 6
     assert state["summary"]["risk_down"] == 1
     assert state["hosts"][2]["state"] == "RISK / DOWN"
+
+    hosts[2]["status"] = "1"
+    state = app.refresh_zabbix_native_state()
+    assert state["summary"]["active"] == 6
+    assert state["summary"]["deactivated"] == 1
+    assert state["hosts"][2]["state"] == "DEACTIVATED"
+
+
+def test_zabbix_activation_is_restricted_and_updates_native_host(monkeypatch):
+    calls = []
+
+    def fake_zabbix_call(method, params=None, auth=None):
+        calls.append((method, params, auth))
+        if method == "user.login":
+            return "test-token"
+        if method == "host.get":
+            return [{"hostid": "10101", "host": "NHMF Application Server", "status": "0"}]
+        if method == "host.update":
+            return {"hostids": ["10101"]}
+        raise AssertionError(method)
+
+    refreshed = {
+        "summary": {"active": 6, "deactivated": 1, "total": 7},
+        "hosts": [
+            {
+                "target": "zabbix-agent-application",
+                "role": "Application Server",
+                "enabled": False,
+                "state": "DEACTIVATED",
+            }
+        ],
+    }
+    monkeypatch.setattr(app, "_zabbix_api_call", fake_zabbix_call)
+    monkeypatch.setattr(app, "refresh_zabbix_native_state", lambda: refreshed)
+
+    result = app.set_zabbix_host_activation("zabbix-agent-application", False)
+    update = next(params for method, params, _auth in calls if method == "host.update")
+    assert update == {"hostid": "10101", "status": 1}
+    assert result["host"]["state"] == "DEACTIVATED"
+
+    try:
+        app.set_zabbix_host_activation("not-an-allowed-server", True)
+    except ValueError as exc:
+        assert "Unknown NHMF lab server" in str(exc)
+    else:
+        raise AssertionError("Unknown targets must not be accepted")

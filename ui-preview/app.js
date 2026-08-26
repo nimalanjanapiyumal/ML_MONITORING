@@ -176,7 +176,7 @@ function updateZabbixFleet(zabbix = {}) {
   const body = element("zabbixFleetBody");
   body.replaceChildren();
   if (!hosts.length) {
-    body.innerHTML = '<tr><td colspan="4" class="empty-cell">No native Zabbix host output is available</td></tr>';
+    body.innerHTML = '<tr><td colspan="5" class="empty-cell">No native Zabbix host output is available</td></tr>';
     return;
   }
   hosts.forEach((host) => {
@@ -193,8 +193,46 @@ function updateZabbixFleet(zabbix = {}) {
     tag.textContent = host.state || "UNKNOWN";
     stateCell.appendChild(tag);
     row.appendChild(stateCell);
+    const actionCell = document.createElement("td");
+    actionCell.className = "zabbix-action-cell";
+    const actionButton = document.createElement("button");
+    actionButton.type = "button";
+    actionButton.className = `button small ${host.enabled ? "danger" : "success"}`;
+    actionButton.textContent = !host.registered || host.enabled === null ? "Unavailable" : host.enabled ? "Deactivate" : "Activate";
+    actionButton.dataset.zabbixTarget = host.target || "";
+    actionButton.dataset.zabbixActive = host.enabled ? "false" : "true";
+    actionButton.disabled = !zabbix.api_up || !host.registered || host.enabled === null;
+    actionButton.addEventListener("click", () => changeZabbixHostActivation(actionButton));
+    actionCell.appendChild(actionButton);
+    row.appendChild(actionCell);
     body.appendChild(row);
   });
+}
+
+async function changeZabbixHostActivation(button) {
+  const target = button.dataset.zabbixTarget;
+  const active = button.dataset.zabbixActive === "true";
+  if (!target) return;
+
+  const originalLabel = button.textContent;
+  button.disabled = true;
+  button.textContent = active ? "Activating..." : "Deactivating...";
+  try {
+    const response = await fetch(`${apiBase}/zabbix-hosts/${encodeURIComponent(target)}/activation`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ active })
+    });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.detail || `Zabbix returned HTTP ${response.status}`);
+    const role = payload.host?.role || target;
+    showToast(`${role} monitoring ${active ? "activated" : "deactivated"}`);
+    await refreshOverview(true);
+  } catch (error) {
+    button.disabled = false;
+    button.textContent = originalLabel;
+    showToast(error.message, true);
+  }
 }
 
 function updateMlCards(data) {

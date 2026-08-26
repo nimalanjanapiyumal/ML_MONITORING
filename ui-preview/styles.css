@@ -263,6 +263,11 @@ h3 {
   color: #ffb4b4;
 }
 
+.button.success {
+  border-color: rgba(53, 200, 132, 0.5);
+  color: var(--green);
+}
+
 .button:disabled {
   cursor: not-allowed;
   opacity: 0.45;
@@ -519,6 +524,21 @@ select {
   line-height: 1.45;
   overflow-wrap: anywhere;
   padding: 10px 11px;
+}
+
+.zabbix-action-cell {
+  width: 112px;
+}
+
+.zabbix-action-cell .button {
+  width: 100%;
+}
+
+.table-help {
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.5;
+  margin: 14px 0 0;
 }
 
 .simulation-footer small {

@@ -283,7 +283,7 @@ Grafana is pre-provisioned with 4 dashboards located in the **NHMF** folder:
 3. **Suricata IDS Dashboard** (`/d/nhmf-suricata/`):
    - 20-panel threat monitoring view: Stacked alert rate timeline, top 15 signatures, protocol distribution, flow throughput, DNS record anomalies, TLS JA3 hashes, and HTTP status codes.
 4. **Zabbix Infrastructure & Host Dashboard** (`/d/nhmf-zabbix/`):
-   - Zabbix Web latency, Server and MySQL TCP health, CPU/Memory/Disk/Network metrics, active alerts, and a seven-server timeline driven by native Zabbix interface and `agent.ping` data.
+   - Zabbix Web latency, Server and MySQL TCP health, CPU/Memory/Disk/Network metrics, active alerts, a seven-server health timeline, and a separate host activation timeline driven by native Zabbix data.
 
 ---
 
@@ -319,6 +319,8 @@ After Zabbix Web becomes ready, the startup script uses the host Python runtime 
 - **JSON-RPC API:** `http://localhost:8080/api_jsonrpc.php`
 - **Readable native data supplied to Grafana:** [http://localhost:8000/zabbix-health](http://localhost:8000/zabbix-health)
 - **Suricata sensor/exporter response:** [http://localhost:9517/status](http://localhost:9517/status)
+
+The main portal at `http://localhost:8088` includes an Activate/Deactivate button for every bundled Zabbix lab host. These controls enable or disable that host's native Zabbix monitoring state; they do not destroy the container or power off the Ubuntu VM. The portal refreshes immediately, and Grafana records both the activation state and resulting health impact on its 15-second refresh cycle. The control API accepts only the seven fixed `ZABBIX_DEMO_HOSTS` targets.
 
 ---
 

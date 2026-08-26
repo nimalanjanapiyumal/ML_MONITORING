@@ -23,6 +23,8 @@ The shared numeric boundaries are:
 
 Run `./scripts/fault_injection/demo_scenarios.sh list` to print the same list at the command line.
 
+For an interactive demonstration, open the main portal at `http://localhost:8088` and use the Activate/Deactivate control beside any of the seven Zabbix server roles. The native host status changes immediately and is recorded in Grafana's **Zabbix Host Activation Timeline**. Use the command-line outage scenarios when the demonstration specifically needs the agent container itself to stop.
+
 Use at least 150 seconds for Prometheus alerts with a two-minute persistence period. Use 210 seconds for agent scenarios when demonstrating Zabbix's native **agent unavailable for 3 minutes** trigger.
 
 | Scenario | Command | Expected evidence |

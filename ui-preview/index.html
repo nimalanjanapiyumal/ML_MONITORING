@@ -221,19 +221,20 @@
           <article class="panel table-panel">
             <div class="panel-heading">
               <div>
-                <p class="section-kicker">Same source used by Grafana</p>
+                <p class="section-kicker">Status and monitoring control</p>
                 <h3>Current Zabbix host output</h3>
               </div>
               <span class="panel-note" id="zabbixApiState">Waiting for Zabbix API</span>
             </div>
             <div class="table-wrap">
               <table>
-                <thead><tr><th>Server role</th><th>Zabbix host</th><th>Agent endpoint</th><th>State</th></tr></thead>
+                <thead><tr><th>Server role</th><th>Zabbix host</th><th>Agent endpoint</th><th>State</th><th>Control</th></tr></thead>
                 <tbody id="zabbixFleetBody">
-                  <tr><td colspan="4" class="empty-cell">Waiting for native Zabbix data</td></tr>
+                  <tr><td colspan="5" class="empty-cell">Waiting for native Zabbix data</td></tr>
                 </tbody>
               </table>
             </div>
+            <p class="table-help">Activate or deactivate native Zabbix monitoring for each bundled lab server. Grafana reflects the change on its next 15-second refresh.</p>
           </article>
 
           <article class="panel scenario-catalog">

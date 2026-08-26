@@ -176,6 +176,13 @@ zabbix_native_host_registered = Gauge(
     registry=registry,
 )
 
+zabbix_native_host_enabled = Gauge(
+    "zabbix_native_host_enabled",
+    "Native Zabbix monitoring activation: 1 active, 0 deactivated, -1 unknown or not registered.",
+    ["host", "role", "target"],
+    registry=registry,
+)
+
 zabbix_native_agent_available = Gauge(
     "zabbix_native_agent_available",
     "Native Zabbix agent-interface availability. 1 is available and 0 is unavailable or not yet known.",
@@ -221,7 +228,15 @@ ZABBIX_STATE = {
     "version": None,
     "collected_at": 0.0,
     "error": "Waiting for the first Zabbix API collection",
-    "summary": {"healthy": 0, "warning": 0, "risk_down": 7, "registered": 0, "total": 7},
+    "summary": {
+        "healthy": 0,
+        "warning": 0,
+        "risk_down": 7,
+        "registered": 0,
+        "active": 0,
+        "deactivated": 0,
+        "total": 7,
+    },
     "hosts": [],
 }
 
@@ -309,6 +324,10 @@ class UNSWPredictionRequest(BaseModel):
 class AttackSimulationRequest(BaseModel):
     scenario: str = Field(..., description="Controlled lab scenario identifier.")
     duration_seconds: int = Field(60, ge=15, le=300)
+
+
+class ZabbixHostActivationRequest(BaseModel):
+    active: bool = Field(..., description="Enable or disable native Zabbix monitoring for the selected lab host.")
 
 
 def load_config() -> dict:
@@ -761,6 +780,7 @@ def _publish_failed_zabbix_collection(error: str) -> None:
             "target": definition["target"],
         }
         zabbix_native_host_registered.labels(**labels).set(0)
+        zabbix_native_host_enabled.labels(**labels).set(-1)
         zabbix_native_agent_available.labels(**labels).set(0)
         zabbix_native_agent_ping.labels(**labels).set(0)
         zabbix_native_agent_data_age_seconds.labels(**labels).set(-1)
@@ -771,6 +791,7 @@ def _publish_failed_zabbix_collection(error: str) -> None:
                 "state": "RISK / DOWN",
                 "health_level": 0,
                 "registered": False,
+                "enabled": None,
                 "agent_available": False,
                 "agent_ping": False,
                 "data_age_seconds": None,
@@ -783,7 +804,15 @@ def _publish_failed_zabbix_collection(error: str) -> None:
         "version": None,
         "collected_at": time.time(),
         "error": error,
-        "summary": {"healthy": 0, "warning": 0, "risk_down": 7, "registered": 0, "total": 7},
+        "summary": {
+            "healthy": 0,
+            "warning": 0,
+            "risk_down": 7,
+            "registered": 0,
+            "active": 0,
+            "deactivated": 0,
+            "total": 7,
+        },
         "hosts": rows,
     }
 
@@ -843,6 +872,7 @@ def refresh_zabbix_native_state() -> dict:
             }
             host = hosts_by_name.get(definition["host"])
             registered = host is not None
+            enabled = bool(host and str(host.get("status")) == "0")
             interface: dict = {}
             ping_item: dict = {}
             availability_value = "0"
@@ -878,8 +908,10 @@ def refresh_zabbix_native_state() -> dict:
                     and ping_fresh
                 )
 
-            if not registered or (host and str(host.get("status")) != "0"):
-                health_level, state = 0, "RISK / DOWN"
+            if not registered:
+                health_level, state = 0, "NOT REGISTERED"
+            elif not enabled:
+                health_level, state = 0, "DEACTIVATED"
             elif availability_value == "2" or str(ping_item.get("state", "0")) == "1":
                 health_level, state = 0, "RISK / DOWN"
             elif availability_value == "1" and ping_ok:
@@ -888,6 +920,7 @@ def refresh_zabbix_native_state() -> dict:
                 health_level, state = 1, "WARNING / PENDING"
 
             zabbix_native_host_registered.labels(**labels).set(1 if registered else 0)
+            zabbix_native_host_enabled.labels(**labels).set(1 if enabled else (0 if registered else -1))
             zabbix_native_agent_available.labels(**labels).set(1 if availability_value == "1" else 0)
             zabbix_native_agent_ping.labels(**labels).set(1 if ping_ok else 0)
             zabbix_native_agent_data_age_seconds.labels(**labels).set(data_age if data_age is not None else -1)
@@ -898,6 +931,7 @@ def refresh_zabbix_native_state() -> dict:
                     "state": state,
                     "health_level": health_level,
                     "registered": registered,
+                    "enabled": enabled,
                     "agent_available": availability_value == "1",
                     "agent_ping": ping_ok,
                     "data_age_seconds": data_age,
@@ -914,6 +948,8 @@ def refresh_zabbix_native_state() -> dict:
             "warning": sum(row["health_level"] == 1 for row in rows),
             "risk_down": sum(row["health_level"] == 0 for row in rows),
             "registered": sum(row["registered"] for row in rows),
+            "active": sum(row["enabled"] for row in rows),
+            "deactivated": sum(row["registered"] and not row["enabled"] for row in rows),
             "total": len(ZABBIX_DEMO_HOSTS),
         }
         ZABBIX_STATE = {
@@ -927,6 +963,46 @@ def refresh_zabbix_native_state() -> dict:
     except Exception as exc:
         _publish_failed_zabbix_collection(str(exc))
     return ZABBIX_STATE
+
+
+def set_zabbix_host_activation(target: str, active: bool) -> dict:
+    """Enable or disable one of the fixed NHMF demo hosts through the Zabbix API."""
+    definition = next((item for item in ZABBIX_DEMO_HOSTS if item["target"] == target), None)
+    if definition is None:
+        raise ValueError(f"Unknown NHMF lab server target: {target}")
+
+    auth = str(
+        _zabbix_api_call(
+            "user.login",
+            {"username": ZABBIX_ADMIN_USER, "password": ZABBIX_ADMIN_PASSWORD},
+        )
+    )
+    hosts = _zabbix_api_call(
+        "host.get",
+        {
+            "output": ["hostid", "host", "name", "status"],
+            "filter": {"host": [definition["host"]]},
+        },
+        auth,
+    ) or []
+    if not hosts:
+        raise LookupError(
+            f"{definition['host']} is not registered in Zabbix. Run the seven-host reconciliation first."
+        )
+
+    _zabbix_api_call(
+        "host.update",
+        {"hostid": hosts[0]["hostid"], "status": 0 if active else 1},
+        auth,
+    )
+    refreshed = refresh_zabbix_native_state()
+    selected = next((host for host in refreshed.get("hosts", []) if host.get("target") == target), None)
+    return {
+        "changed": True,
+        "requested_active": active,
+        "host": selected,
+        "summary": refreshed.get("summary", {}),
+    }
 
 
 def zabbix_monitor_loop() -> None:
@@ -1071,6 +1147,18 @@ def zabbix_health(refresh: bool = False) -> dict:
     if refresh:
         return refresh_zabbix_native_state()
     return ZABBIX_STATE
+
+
+@app.post("/zabbix-hosts/{target}/activation")
+def zabbix_host_activation(target: str, payload: ZabbixHostActivationRequest) -> dict:
+    try:
+        return set_zabbix_host_activation(target, payload.active)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except LookupError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Zabbix activation failed: {exc}") from exc
 
 
 @app.get("/portal/overview")

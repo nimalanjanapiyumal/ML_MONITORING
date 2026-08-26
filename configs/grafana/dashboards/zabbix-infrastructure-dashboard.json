@@ -938,6 +938,54 @@
       ],
       "title": "Unavailable Zabbix Servers",
       "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Native Zabbix host activation state controlled from the NHMF main portal. Deactivated hosts remain registered but are intentionally not monitored until reactivated.",
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "options": {
+                "-1": { "color": "orange", "text": "UNKNOWN / API DOWN" },
+                "0": { "color": "red", "text": "DEACTIVATED" },
+                "1": { "color": "green", "text": "ACTIVE" }
+              },
+              "type": "value"
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "green", "value": 1 }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 40 },
+      "id": 17,
+      "options": {
+        "alignValue": "left",
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "mergeValues": true,
+        "rowHeight": 0.9,
+        "showValue": "auto",
+        "tooltip": { "mode": "single", "sort": "none" }
+      },
+      "targets": [
+        { "expr": "zabbix_native_host_enabled{host=\"Zabbix server\"}", "legendFormat": "Core Monitoring Server", "refId": "A" },
+        { "expr": "zabbix_native_host_enabled{host=\"NHMF Application Server\"}", "legendFormat": "Application Server", "refId": "B" },
+        { "expr": "zabbix_native_host_enabled{host=\"NHMF Database Server\"}", "legendFormat": "Database Server", "refId": "C" },
+        { "expr": "zabbix_native_host_enabled{host=\"NHMF Security Server\"}", "legendFormat": "Security Server", "refId": "D" },
+        { "expr": "zabbix_native_host_enabled{host=\"NHMF Web Server\"}", "legendFormat": "Web Server", "refId": "E" },
+        { "expr": "zabbix_native_host_enabled{host=\"NHMF API Server\"}", "legendFormat": "API Server", "refId": "F" },
+        { "expr": "zabbix_native_host_enabled{host=\"NHMF Backup Server\"}", "legendFormat": "Backup Server", "refId": "G" }
+      ],
+      "title": "Zabbix Host Activation Timeline",
+      "type": "state-timeline"
     }
   ],
   "refresh": "15s",
@@ -951,5 +999,5 @@
   "timezone": "browser",
   "title": "Zabbix Infrastructure & Host Dashboard",
   "uid": "nhmf-zabbix",
-  "version": 2
+  "version": 3
 }

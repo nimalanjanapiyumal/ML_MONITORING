@@ -171,6 +171,16 @@ def test_zabbix_dashboard_never_defaults_missing_services_to_online():
         ("yellow", "WARNING / PENDING"),
         ("green", "HEALTHY"),
     ]
+    activation = panel_by_title(dashboard, "Zabbix Host Activation Timeline")
+    assert activation["type"] == "state-timeline"
+    assert len(activation["targets"]) == 7
+    assert all("zabbix_native_host_enabled" in target["expr"] for target in activation["targets"])
+    activation_mappings = activation["fieldConfig"]["defaults"]["mappings"][0]["options"]
+    assert activation_mappings == {
+        "-1": {"color": "orange", "text": "UNKNOWN / API DOWN"},
+        "0": {"color": "red", "text": "DEACTIVATED"},
+        "1": {"color": "green", "text": "ACTIVE"},
+    }
     assert panel_by_title(dashboard, "Healthy Zabbix Servers")["fieldConfig"]["defaults"]["max"] == 7
     assert panel_by_title(dashboard, "Unavailable Zabbix Servers")["fieldConfig"]["defaults"]["max"] == 7
     healthy_steps = panel_by_title(dashboard, "Healthy Zabbix Servers")["fieldConfig"]["defaults"]["thresholds"]["steps"]
@@ -238,6 +248,8 @@ def test_outage_alerts_and_demo_scenarios_cover_suricata_and_zabbix():
     assert "zabbix-application-outage 210" in portal_html
     assert "suricata-full-outage 150" in portal_html
     assert "updateZabbixFleet(data.zabbix)" in portal_js
+    assert "changeZabbixHostActivation" in portal_js
+    assert "/zabbix-hosts/" in portal_js
 
 
 def test_suricata_stats_values_and_sensor_freshness(tmp_path, monkeypatch):
