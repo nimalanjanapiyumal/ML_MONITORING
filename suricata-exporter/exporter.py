@@ -210,12 +210,16 @@ _alert_lock = threading.Lock()
 _last_stats_observed_at = 0.0
 _last_event_observed_at = 0.0
 _events_processed = 0
+_latest_alert: dict = {}
 
 
-def _record_alert_timestamp() -> None:
+def _record_alert_timestamp(details: Optional[dict] = None) -> None:
+    global _latest_alert
     now = time.time()
     with _alert_lock:
         _alert_timestamps.append(now)
+        if details:
+            _latest_alert = {**details, "observed_at": now}
 
 
 def _update_alert_window_gauge() -> None:
@@ -245,6 +249,7 @@ def _status_payload() -> dict:
     now = time.time()
     with _alert_lock:
         recent_alerts = len(_alert_timestamps)
+        latest_alert = dict(_latest_alert)
     return {
         "exporter": "ok",
         "sensor": "healthy" if _sensor_is_healthy(now) else "stale_or_unavailable",
@@ -253,6 +258,7 @@ def _status_payload() -> dict:
         "eve_file_available": Path(EVE_JSON_PATH).exists(),
         "events_processed": _events_processed,
         "alerts_in_window": recent_alerts,
+        "latest_alert": latest_alert or None,
         "last_event_age_seconds": round(now - _last_event_observed_at, 3) if _last_event_observed_at else None,
         "last_stats_age_seconds": round(now - _last_stats_observed_at, 3) if _last_stats_observed_at else None,
         "sensor_stale_after_seconds": SENSOR_STALE_AFTER_SECONDS,
@@ -290,7 +296,15 @@ def handle_alert(evt: dict) -> None:
     app_proto = _safe_str(evt.get("app_proto"), 30)
     alerts_total.labels(signature=sig, category=cat, severity=sev,
                         proto=proto, app_proto=app_proto).inc()
-    _record_alert_timestamp()
+    _record_alert_timestamp(
+        {
+            "signature": sig,
+            "category": cat,
+            "severity": sev,
+            "proto": proto,
+            "app_proto": app_proto,
+        }
+    )
 
 
 def handle_flow(evt: dict) -> None:

@@ -6,7 +6,7 @@ cd "$PROJECT_ROOT"
 
 export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-nhmf}"
 
-PORTAL_BUILD_ID="2026.08.26-zabbix-controls-v1"
+PORTAL_BUILD_ID="2026.08.26-zabbix-attack-demo-v2"
 
 RETRAIN="${NHMF_RETRAIN:-0}"
 SKIP_TRAIN="${NHMF_SKIP_TRAIN:-0}"
@@ -230,6 +230,16 @@ docker compose up -d --build
 # Recreating these services guarantees that Nginx reloads its cache policy and
 # Grafana reprovisions the current dashboard definitions after an import/pull.
 docker compose up -d --force-recreate --no-deps portal grafana
+
+docker compose restart \
+  zabbix-agent \
+  zabbix-agent-application \
+  zabbix-agent-database \
+  zabbix-agent-security \
+  zabbix-agent-web \
+  zabbix-agent-api \
+  zabbix-agent-backup >/dev/null
+sleep 5
 
 echo ""
 docker compose ps

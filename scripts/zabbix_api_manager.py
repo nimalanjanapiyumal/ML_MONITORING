@@ -8,6 +8,7 @@ import os
 import sys
 import json
 import argparse
+import socket
 import subprocess
 import time
 import urllib.request
@@ -62,6 +63,18 @@ def resolve_compose_service_ip(service_name: str) -> str | None:
     except (FileNotFoundError, IndexError, KeyError, json.JSONDecodeError, subprocess.SubprocessError):
         return None
     return None
+
+
+def compose_agent_tcp_reachable(service_name: str, timeout: float = 1.0) -> bool:
+    """Check the current Compose agent endpoint from the Ubuntu host."""
+    ip_address = resolve_compose_service_ip(service_name)
+    if not ip_address:
+        return False
+    try:
+        with socket.create_connection((ip_address, 10050), timeout=timeout):
+            return True
+    except OSError:
+        return False
 
 
 class ZabbixAPI:
@@ -157,6 +170,7 @@ class ZabbixAPI:
                         "health": "NOT REGISTERED",
                         "availability": "UNKNOWN",
                         "agent_ping": "NO DATA",
+                        "agent_reachable": None,
                         "endpoint": demo_host["dns"],
                         "error": "Host is missing from Zabbix",
                     }
@@ -182,13 +196,16 @@ class ZabbixAPI:
             except (TypeError, ValueError):
                 last_clock = 0
             ping_fresh = last_clock > 0 and current_time - last_clock <= 300
+            agent_reachable = compose_agent_tcp_reachable(demo_host["dns"])
 
             if str(host.get("status")) != "0":
                 health = "DISABLED"
+            elif not agent_reachable:
+                health = "RISK / DOWN"
             elif availability_value == "1" and last_value == "1" and item_state == "0" and ping_fresh:
                 health = "HEALTHY"
             elif availability_value == "2" or item_state == "1":
-                health = "RISK / DOWN"
+                health = "WARNING / ZABBIX CONFIG"
             else:
                 health = "PENDING"
 
@@ -198,6 +215,7 @@ class ZabbixAPI:
                     "health": health,
                     "availability": availability,
                     "agent_ping": "1" if last_value == "1" else "NO DATA",
+                    "agent_reachable": agent_reachable,
                     "endpoint": endpoint or demo_host["dns"],
                     "lastclock": last_clock,
                     "error": agent_interface.get("error") or ping_item.get("error") or "",
@@ -445,6 +463,32 @@ class ZabbixAPI:
             results.append(result)
         return results
 
+    def set_demo_hosts_activation(self, active: bool) -> list:
+        """Enable or disable native Zabbix monitoring for all seven demo hosts."""
+        hosts = self.call(
+            "host.get",
+            {
+                "output": ["hostid", "host", "status"],
+                "filter": {"host": [definition["hostname"] for definition in DEMO_HOSTS]},
+            },
+        ) or []
+        hosts_by_name = {host.get("host"): host for host in hosts}
+        missing = [definition["hostname"] for definition in DEMO_HOSTS if definition["hostname"] not in hosts_by_name]
+        if missing:
+            raise RuntimeError(f"Demo hosts are not registered: {', '.join(missing)}")
+        results = []
+        for definition in DEMO_HOSTS:
+            host = hosts_by_name[definition["hostname"]]
+            self.call("host.update", {"hostid": host["hostid"], "status": 0 if active else 1})
+            results.append(
+                {
+                    "hostname": definition["hostname"],
+                    "dns": definition["dns"],
+                    "active": active,
+                }
+            )
+        return results
+
 
 def wait_for_api(api: ZabbixAPI, wait_seconds: int) -> str:
     deadline = time.monotonic() + max(wait_seconds, 0)
@@ -466,7 +510,17 @@ def main():
     parser.add_argument("--password", default=DEFAULT_PASSWORD, help="Zabbix password")
     parser.add_argument(
         "action",
-        choices=["status", "hosts", "problems", "templates", "setup-host", "setup-demo-hosts", "fix-agent"],
+        choices=[
+            "status",
+            "hosts",
+            "problems",
+            "templates",
+            "setup-host",
+            "setup-demo-hosts",
+            "activate-demo-hosts",
+            "deactivate-demo-hosts",
+            "fix-agent",
+        ],
         help="Action to execute",
     )
     parser.add_argument("--host-name", default="NHMF-Docker-Host", help="Host name for setup-host action")
@@ -498,7 +552,9 @@ def main():
 
             print("\n--- Native Zabbix Agent Health ---")
             for target in api.get_demo_host_health():
-                detail = f"availability={target['availability']} agent.ping={target['agent_ping']}"
+                reachable = target.get("agent_reachable")
+                tcp_state = "UNKNOWN" if reachable is None else ("UP" if reachable else "DOWN")
+                detail = f"tcp={tcp_state} availability={target['availability']} agent.ping={target['agent_ping']}"
                 if target.get("error"):
                     detail += f" error={target['error']}"
                 print(f"  [{target['health']}] {target['hostname']} ({target['endpoint']}:10050; {detail})")
@@ -550,6 +606,14 @@ def main():
                 )
             if any(result.get("status") == "error" for result in results):
                 sys.exit(1)
+
+        elif args.action in ("activate-demo-hosts", "deactivate-demo-hosts"):
+            active = args.action == "activate-demo-hosts"
+            results = api.set_demo_hosts_activation(active)
+            state = "ACTIVE" if active else "DEACTIVATED"
+            print(f"\n--- Demo Host Monitoring State ({state}) ---")
+            for result in results:
+                print(f"  [{state}] {result['hostname']} ({result['dns']}:10050)")
 
     except Exception as e:
         print(f"[ERROR] {e}", file=sys.stderr)

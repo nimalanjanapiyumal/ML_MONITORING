@@ -1,5 +1,6 @@
 import json
 import importlib.util
+import re
 import time
 from pathlib import Path
 
@@ -53,6 +54,7 @@ def test_zabbix_demo_servers_are_deployed_and_probed():
 
     start_source = (PROJECT_ROOT / "scripts" / "start_stack.sh").read_text(encoding="utf-8")
     assert "setup-demo-hosts" in start_source
+    assert "docker compose restart" in start_source
     assert "http://localhost:9090/-/reload" in start_source
     demo_source = (PROJECT_ROOT / "scripts" / "fault_injection" / "demo_scenarios.sh").read_text(
         encoding="utf-8"
@@ -89,20 +91,35 @@ def test_portal_update_is_cache_safe_and_deployment_is_verifiable():
     assert "./configs/portal/nginx.conf:/etc/nginx/conf.d/default.conf:ro" in volumes
     assert portal["healthcheck"]["test"][-1] == "http://localhost/health"
 
-    build_id = "2026.08.26-zabbix-controls-v1"
+    build_id = "2026.08.26-zabbix-attack-demo-v2"
     nginx_source = (PROJECT_ROOT / "configs" / "portal" / "nginx.conf").read_text(encoding="utf-8")
     portal_html = (PROJECT_ROOT / "ui-preview" / "index.html").read_text(encoding="utf-8")
     update_source = (PROJECT_ROOT / "scripts" / "apply_dashboard_updates.sh").read_text(encoding="utf-8")
+    repair_source = (PROJECT_ROOT / "scripts" / "repair_zabbix_fleet.sh").read_text(encoding="utf-8")
     start_source = (PROJECT_ROOT / "scripts" / "start_stack.sh").read_text(encoding="utf-8")
 
     assert "no-store, no-cache" in nginx_source
     assert "location = /version" in nginx_source
     assert build_id in nginx_source
     assert build_id in portal_html
-    assert "Dashboard build: Zabbix Controls v1" in portal_html
+    assert "Dashboard build: Attack Demo v2" in portal_html
     assert "--force-recreate --no-deps portal grafana" in update_source
     assert build_id in update_source
     assert "verify_portal_build" in start_source
+    assert "setup-demo-hosts" in repair_source
+    assert "activate-demo-hosts" in repair_source
+    assert "docker compose restart" in repair_source
+    assert "zabbix-health?refresh=true" in repair_source
+
+
+def test_portal_javascript_references_existing_unique_elements():
+    portal_html = (PROJECT_ROOT / "ui-preview" / "index.html").read_text(encoding="utf-8")
+    portal_js = (PROJECT_ROOT / "ui-preview" / "app.js").read_text(encoding="utf-8")
+    html_ids = re.findall(r'id="([^"]+)"', portal_html)
+    referenced_ids = set(re.findall(r'element\("([^"]+)"\)', portal_js))
+
+    assert len(html_ids) == len(set(html_ids))
+    assert referenced_ids <= set(html_ids)
 
 
 def test_health_counts_use_real_probe_results_and_count_failed_targets():
@@ -174,6 +191,9 @@ def test_zabbix_dashboard_never_defaults_missing_services_to_online():
     assert panel_by_title(dashboard, "Unavailable Zabbix Servers")["targets"][0]["expr"] == (
         "count(zabbix_native_host_health == 0) or vector(0)"
     )
+    assert panel_by_title(dashboard, "Unknown Zabbix Servers")["targets"][0]["expr"] == (
+        "count(zabbix_native_host_health < 0) or vector(0)"
+    )
     all_targets = panel_by_title(dashboard, "All Zabbix Targets — Health Timeline")
     assert all_targets["type"] == "state-timeline"
     assert len(all_targets["targets"]) == 10
@@ -189,7 +209,8 @@ def test_zabbix_dashboard_never_defaults_missing_services_to_online():
     }
     assert all(target["expr"].startswith("zabbix_native_host_health") for target in fleet["targets"])
     mappings = fleet["fieldConfig"]["defaults"]["mappings"][0]["options"]
-    assert [(mappings[value]["color"], mappings[value]["text"]) for value in ("0", "1", "2")] == [
+    assert [(mappings[value]["color"], mappings[value]["text"]) for value in ("-1", "0", "1", "2")] == [
+        ("gray", "UNKNOWN / API OFFLINE"),
         ("red", "RISK / DOWN"),
         ("yellow", "WARNING / PENDING"),
         ("green", "HEALTHY"),
@@ -220,10 +241,23 @@ def test_zabbix_dashboard_never_defaults_missing_services_to_online():
         ("orange", 2),
         ("red", 3),
     ]
+    correlation = panel_by_title(dashboard, "Attack and Server-Outage Correlation")
+    assert "suricata_alerts_last_window" in correlation["targets"][0]["expr"]
+    assert "zabbix_native_agent_reachable == 0" in correlation["targets"][0]["expr"]
+    assert "zabbix_native_host_enabled == 1" in correlation["targets"][0]["expr"]
+    assert "suricata_alerts_total" in panel_by_title(
+        dashboard, "Suricata Attack Signatures Seen During Zabbix Events"
+    )["targets"][0]["expr"]
 
 
 def test_outage_alerts_and_demo_scenarios_cover_suricata_and_zabbix():
     alerts = load_yaml("configs/prometheus/alert_rules.yml")
+    alert_rules = {
+        rule["alert"]: rule
+        for group in alerts["groups"]
+        for rule in group["rules"]
+        if "alert" in rule
+    }
     alert_names = {
         rule["alert"]
         for group in alerts["groups"]
@@ -241,6 +275,8 @@ def test_outage_alerts_and_demo_scenarios_cover_suricata_and_zabbix():
         "ZabbixFleetDegraded",
         "ZabbixFleetCritical",
     } <= alert_names
+    assert "zabbix_native_agent_reachable == 0" in alert_rules["ZabbixAgentUnreachable"]["expr"]
+    assert "zabbix_native_host_enabled == 1" in alert_rules["ZabbixAgentUnreachable"]["expr"]
 
     demo_source = (PROJECT_ROOT / "scripts" / "fault_injection" / "demo_scenarios.sh").read_text(encoding="utf-8")
     for scenario in (
@@ -259,6 +295,9 @@ def test_outage_alerts_and_demo_scenarios_cover_suricata_and_zabbix():
         "zabbix-backup-server-outage",
         "zabbix-multi-server-outage",
         "zabbix-fleet-outage",
+        "zabbix-fleet-online",
+        "zabbix-monitoring-toggle",
+        "attack-and-server-outage",
     ):
         assert scenario in demo_source
     assert "DURING OUTAGE — FINAL" in demo_source
@@ -270,8 +309,13 @@ def test_outage_alerts_and_demo_scenarios_cover_suricata_and_zabbix():
     assert 'id="zabbixFleetBody"' in portal_html
     assert "zabbix-application-outage 210" in portal_html
     assert "suricata-full-outage 150" in portal_html
+    assert "attack-and-server-outage 90" in portal_html
+    assert 'id="activateAllZabbix"' in portal_html
+    assert 'id="correlationState"' in portal_html
     assert "updateZabbixFleet(data.zabbix)" in portal_js
+    assert "updateSecurityCorrelation(data.security)" in portal_js
     assert "changeZabbixHostActivation" in portal_js
+    assert "changeAllZabbixHostActivation" in portal_js
     assert "/zabbix-hosts/" in portal_js
 
 
@@ -298,6 +342,25 @@ def test_suricata_stats_values_and_sensor_freshness(tmp_path, monkeypatch):
 
     exporter._last_stats_observed_at = time.time() - exporter.SENSOR_STALE_AFTER_SECONDS - 1
     assert exporter._sensor_is_healthy() is False
+
+
+def test_suricata_status_exposes_latest_attack_signature():
+    exporter = load_module("suricata-exporter/exporter.py", "suricata_latest_alert_test")
+    exporter.handle_alert(
+        {
+            "proto": "TCP",
+            "app_proto": "http",
+            "alert": {
+                "signature": "NHMF DEMO Cleartext Basic Auth",
+                "category": "Credential Exposure",
+                "severity": 1,
+            },
+        }
+    )
+    status = exporter._status_payload()
+    assert status["alerts_in_window"] == 1
+    assert status["latest_alert"]["signature"] == "NHMF DEMO Cleartext Basic Auth"
+    assert status["latest_alert"]["severity"] == "1"
 
 
 def test_zabbix_existing_host_reconciliation_uses_host_massadd(monkeypatch):
@@ -408,10 +471,15 @@ def test_zabbix_native_health_requires_available_interface_and_fresh_agent_ping(
 
     monkeypatch.setattr(api, "get_hosts", lambda: hosts)
     monkeypatch.setattr(api, "call", lambda method, _params=None: ping_items if method == "item.get" else {})
+    monkeypatch.setattr(manager, "compose_agent_tcp_reachable", lambda _target: True)
     health = api.get_demo_host_health()
     assert {target["health"] for target in health} == {"HEALTHY"}
 
     hosts[2]["interfaces"][0]["available"] = "2"
+    health = api.get_demo_host_health()
+    assert health[2]["health"] == "WARNING / ZABBIX CONFIG"
+
+    monkeypatch.setattr(manager, "compose_agent_tcp_reachable", lambda target: target != "zabbix-agent-database")
     health = api.get_demo_host_health()
     assert health[2]["health"] == "RISK / DOWN"
 

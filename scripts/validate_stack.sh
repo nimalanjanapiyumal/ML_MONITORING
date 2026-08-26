@@ -16,7 +16,7 @@ fi
 
 GRAFANA_ADMIN_USER="${GRAFANA_ADMIN_USER:-admin}"
 GRAFANA_ADMIN_PASSWORD="${GRAFANA_ADMIN_PASSWORD:-admin123}"
-PORTAL_BUILD_ID="2026.08.26-zabbix-controls-v1"
+PORTAL_BUILD_ID="2026.08.26-zabbix-attack-demo-v2"
 
 GREEN='\033[0;32m'
 RED='\033[0;31m'
@@ -135,10 +135,10 @@ curl -fsS "http://localhost:8000/zabbix-health?refresh=true" 2>/dev/null | pytho
 import json, sys
 payload = json.load(sys.stdin)
 summary = payload.get("summary", {})
-print("Grafana native collector: API={} registered={}/{} healthy={} warning={} risk/down={}".format(
+print("Grafana native collector: API={} registered={}/{} healthy={} warning={} risk/down={} unreachable={} unknown={}".format(
     "UP" if payload.get("api_up") else "DOWN",
     summary.get("registered", 0), summary.get("total", 7), summary.get("healthy", 0),
-    summary.get("warning", 0), summary.get("risk_down", 0)))
+    summary.get("warning", 0), summary.get("risk_down", 0), summary.get("unreachable", 0), summary.get("unknown", 0)))
 for host in payload.get("hosts", []):
     print("  - [{}] {} ({})".format(host.get("state"), host.get("role"), host.get("host")))
 ' || echo "Could not query the native Zabbix data used by Grafana"

@@ -33,6 +33,8 @@ Zabbix control-plane scenarios (real, automatically restored):
   zabbix-control-plane-outage  Stop the Zabbix server daemon and Web UI/API together
 
 Zabbix monitored-server scenarios (seven independently monitored lab servers):
+  zabbix-fleet-online          Repair/register/activate all seven servers and verify green baseline
+  zabbix-monitoring-toggle     Deactivate all seven in Zabbix, then restore them automatically
   zabbix-core-agent-outage     Stop the Core Monitoring Server agent
   zabbix-application-outage    Stop the Application Server agent
   zabbix-database-outage       Stop the Database Server agent
@@ -42,6 +44,9 @@ Zabbix monitored-server scenarios (seven independently monitored lab servers):
   zabbix-backup-server-outage  Stop the dummy Backup Server agent
   zabbix-multi-server-outage   Stop Web, API, and Backup agents together (7 healthy -> 4)
   zabbix-fleet-outage          Stop all seven monitored server agents
+
+Combined security and availability scenario:
+  attack-and-server-outage     Inject all Suricata threats, then stop the Application Server agent
 
 Other availability scenarios:
   ml-outage                    Stop the ML anomaly API
@@ -64,6 +69,8 @@ Examples:
   ./scripts/fault_injection/demo_scenarios.sh zabbix-server-outage 210
   ./scripts/fault_injection/demo_scenarios.sh zabbix-web-server-outage 210
   ./scripts/fault_injection/demo_scenarios.sh zabbix-multi-server-outage 210
+  ./scripts/fault_injection/demo_scenarios.sh zabbix-monitoring-toggle 60
+  ./scripts/fault_injection/demo_scenarios.sh attack-and-server-outage 90
   ./scripts/fault_injection/demo_scenarios.sh suricata-scan
   sudo ./scripts/fault_injection/demo_scenarios.sh latency 90 eth0
 EOF
@@ -83,7 +90,7 @@ import json, sys
 payload = json.load(sys.stdin)
 summary = payload.get("summary", {})
 api_state = "UP" if payload.get("api_up") else "DOWN"
-print("  API={}; registered={}/7; healthy={}; warning={}; risk/down={}".format(api_state, summary.get("registered", 0), summary.get("healthy", 0), summary.get("warning", 0), summary.get("risk_down", 0)))
+print("  API={}; registered={}/7; healthy={}; warning={}; risk/down={}; unreachable={}; unknown={}".format(api_state, summary.get("registered", 0), summary.get("healthy", 0), summary.get("warning", 0), summary.get("risk_down", 0), summary.get("unreachable", 0), summary.get("unknown", 0)))
 for host in payload.get("hosts", []):
     print("  - [{}] {} ({})".format(host.get("state", "UNKNOWN"), host.get("role"), host.get("host")))
 ' || echo "  [NO DATA] Native Zabbix collector did not respond. Check: docker compose logs --tail 100 ml-anomaly zabbix-web"
@@ -231,6 +238,31 @@ run_suricata_demo() {
   return 1
 }
 
+run_zabbix_monitoring_toggle() {
+  validate_duration
+
+  restore_monitoring() {
+    echo -e "\n${YELLOW}[RECOVERY] Activating all seven Zabbix hosts...${NC}"
+    python3 "$PROJECT_ROOT/scripts/zabbix_api_manager.py" --wait-seconds 60 activate-demo-hosts >/dev/null 2>&1 || true
+    curl -fsS "http://localhost:8000/zabbix-health?refresh=true" >/dev/null 2>&1 || true
+  }
+  trap restore_monitoring EXIT INT TERM
+
+  echo -e "${BLUE}[SCENARIO] Deactivating native monitoring for all seven hosts for ${DURATION} seconds.${NC}"
+  show_zabbix_native_snapshot
+  python3 "$PROJECT_ROOT/scripts/zabbix_api_manager.py" --wait-seconds 60 deactivate-demo-hosts
+  curl -fsS "http://localhost:8000/zabbix-health?refresh=true" >/dev/null 2>&1 || true
+  sleep 5
+  echo -e "${RED}[MONITORING OFF] Main portal rows and the Grafana activation timeline should now be red.${NC}"
+  show_zabbix_native_snapshot
+  sleep "$DURATION"
+  restore_monitoring
+  trap - EXIT INT TERM
+  sleep 10
+  show_zabbix_native_snapshot
+  echo -e "${GREEN}[RECOVERED] All seven Zabbix hosts are active again.${NC}"
+}
+
 case "$SCENARIO" in
   list|-h|--help)
     usage
@@ -257,6 +289,12 @@ case "$SCENARIO" in
     ;;
   zabbix-core-agent-outage)
     run_outage "zabbix-agent" "Core Monitoring Server becomes red; Healthy Zabbix Servers changes from 7 to 6."
+    ;;
+  zabbix-fleet-online)
+    bash "$PROJECT_ROOT/scripts/repair_zabbix_fleet.sh"
+    ;;
+  zabbix-monitoring-toggle)
+    run_zabbix_monitoring_toggle
     ;;
   zabbix-application-outage)
     run_outage "zabbix-agent-application" "Application Server becomes red; Healthy Zabbix Servers changes from 7 to 6."
@@ -287,6 +325,10 @@ case "$SCENARIO" in
     ;;
   zabbix-db-outage)
     run_outage "zabbix-db" "Zabbix MySQL Database becomes red; Zabbix Web and Server may also degrade until MySQL recovers."
+    ;;
+  attack-and-server-outage)
+    run_suricata_demo "all"
+    run_outage "zabbix-agent-application" "Suricata alerts remain visible while Application Server becomes red; the correlation panel reports ATTACK + SERVER OUTAGE."
     ;;
   ml-outage)
     run_outage "ml-anomaly" "ML API status and its direct scrape target become red; TargetDown fires after 2 minutes."

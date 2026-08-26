@@ -4,9 +4,9 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="description" content="Operations portal for the Scalable Network Health Monitoring Framework." />
-    <meta name="nhmf-build" content="2026.08.26-zabbix-controls-v1" />
+    <meta name="nhmf-build" content="2026.08.26-zabbix-attack-demo-v2" />
     <title>Scalable Network Health Monitoring Framework</title>
-    <link rel="stylesheet" href="./styles.css?v=3" />
+    <link rel="stylesheet" href="./styles.css?v=4" />
   </head>
   <body>
     <header class="app-header">
@@ -24,7 +24,7 @@
           <span>Connecting</span>
         </span>
         <span class="last-updated" id="lastUpdated">Awaiting first refresh</span>
-        <span class="portal-build">Dashboard build: Zabbix Controls v1</span>
+        <span class="portal-build">Dashboard build: Attack Demo v2</span>
       </div>
     </header>
 
@@ -195,10 +195,41 @@
       <section class="section-block">
         <div class="section-heading">
           <div>
+            <p class="section-kicker">Cross-system incident evidence</p>
+            <h2>Security and server-outage correlation</h2>
+          </div>
+          <a class="button secondary" data-service-link="suricata-ids" href="#">Open Suricata dashboard</a>
+        </div>
+        <div class="metric-grid security-summary-grid">
+          <article class="metric-card" id="idsSensorCard" data-state="neutral">
+            <span class="metric-label">Suricata IDS sensor</span>
+            <strong id="idsSensorState">--</strong>
+            <small id="idsSensorReason">Waiting for sensor telemetry</small>
+          </article>
+          <article class="metric-card" id="idsAlertsCard" data-state="neutral">
+            <span class="metric-label">IDS alerts (last hour)</span>
+            <strong id="idsAlertCount">--</strong>
+            <small id="idsAlertReason">Waiting for Suricata alert data</small>
+          </article>
+          <article class="metric-card" id="correlationCard" data-state="neutral">
+            <span class="metric-label">Attack / outage correlation</span>
+            <strong id="correlationState">--</strong>
+            <small id="correlationReason">Waiting for Zabbix and Suricata</small>
+          </article>
+        </div>
+      </section>
+
+      <section class="section-block">
+        <div class="section-heading">
+          <div>
             <p class="section-kicker">Native Zabbix API data</p>
             <h2>Seven monitored server roles</h2>
           </div>
-          <a class="button secondary" data-service-link="grafana-zabbix" href="#">Open Zabbix dashboard</a>
+          <div class="server-control-actions">
+            <button class="button success" id="activateAllZabbix" type="button" disabled>Activate all monitoring</button>
+            <button class="button danger" id="deactivateAllZabbix" type="button" disabled>Deactivate all monitoring</button>
+            <a class="button secondary" data-service-link="grafana-zabbix" href="#">Open Zabbix dashboard</a>
+          </div>
         </div>
 
         <div class="metric-grid zabbix-summary-grid">
@@ -216,6 +247,11 @@
             <span class="metric-label">Risk or down</span>
             <strong id="zabbixRiskCount">--</strong>
             <small>Native state 0 / red</small>
+          </article>
+          <article class="metric-card" id="zabbixUnknownCard" data-state="neutral">
+            <span class="metric-label">Unknown or API offline</span>
+            <strong id="zabbixUnknownCount">--</strong>
+            <small>Native state -1 / grey</small>
           </article>
         </div>
 
@@ -248,11 +284,14 @@
             </div>
             <p class="scenario-note">Run these on the Ubuntu VM. Each command now prints before, during, and recovery evidence.</p>
             <div class="scenario-command-list">
+              <code>./scripts/repair_zabbix_fleet.sh</code>
+              <code>./scripts/fault_injection/demo_scenarios.sh zabbix-monitoring-toggle 60</code>
               <code>./scripts/fault_injection/demo_scenarios.sh zabbix-application-outage 210</code>
               <code>./scripts/fault_injection/demo_scenarios.sh zabbix-multi-server-outage 210</code>
               <code>./scripts/fault_injection/demo_scenarios.sh suricata-sensor-outage 150</code>
               <code>./scripts/fault_injection/demo_scenarios.sh suricata-full-outage 150</code>
               <code>./scripts/fault_injection/demo_scenarios.sh suricata-threats-all</code>
+              <code>./scripts/fault_injection/demo_scenarios.sh attack-and-server-outage 90</code>
             </div>
           </article>
         </div>
@@ -380,6 +419,6 @@
     </main>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script src="./app.js?v=5"></script>
+    <script src="./app.js?v=6"></script>
   </body>
 </html>

@@ -55,6 +55,7 @@ scripts/fault_injection/simulate_network_attacks.sh
 scripts/fault_injection/target_down_simulation.sh
 scripts/fix_conflicts.sh
 scripts/install_docker_ubuntu.sh
+scripts/repair_zabbix_fleet.sh
 scripts/setup_zabbix.sh
 scripts/start_stack.ps1
 scripts/start_stack.sh

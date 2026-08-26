@@ -13,7 +13,7 @@ if (-not $env:COMPOSE_PROJECT_NAME) {
     $env:COMPOSE_PROJECT_NAME = "nhmf"
 }
 
-$PortalBuildId = "2026.08.26-zabbix-controls-v1"
+$PortalBuildId = "2026.08.26-zabbix-attack-demo-v2"
 
 function Require-Command {
     param([string]$Name)
@@ -148,6 +148,9 @@ docker compose up -d --build
 # recreate Grafana so its provisioned dashboards match the imported project.
 docker compose up -d --force-recreate --no-deps portal grafana
 
+docker compose restart zabbix-agent zabbix-agent-application zabbix-agent-database zabbix-agent-security zabbix-agent-web zabbix-agent-api zabbix-agent-backup | Out-Null
+Start-Sleep -Seconds 5
+
 Write-Host ""
 docker compose ps
 
@@ -197,7 +200,7 @@ if ($pythonCommand) {
 Write-Host ""
 try {
     $nativeZabbix = Invoke-RestMethod -Uri "http://localhost:8000/zabbix-health?refresh=true" -TimeoutSec 15
-    Write-Host "Native Zabbix data used by Grafana: registered=$($nativeZabbix.summary.registered)/7 healthy=$($nativeZabbix.summary.healthy) warning=$($nativeZabbix.summary.warning) risk/down=$($nativeZabbix.summary.risk_down)"
+    Write-Host "Native Zabbix data used by Grafana: registered=$($nativeZabbix.summary.registered)/7 healthy=$($nativeZabbix.summary.healthy) warning=$($nativeZabbix.summary.warning) risk/down=$($nativeZabbix.summary.risk_down) unreachable=$($nativeZabbix.summary.unreachable) unknown=$($nativeZabbix.summary.unknown)"
     $nativeZabbix.hosts | Select-Object role, host, state, endpoint | Format-Table -AutoSize
 } catch {
     Write-Warning "Native Zabbix data is not ready. Check ml-anomaly and zabbix-web logs."

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import random
+import socket
 import threading
 import time
 from contextlib import asynccontextmanager
@@ -197,6 +198,13 @@ zabbix_native_agent_ping = Gauge(
     registry=registry,
 )
 
+zabbix_native_agent_reachable = Gauge(
+    "zabbix_native_agent_reachable",
+    "Immediate TCP reachability of the expected Zabbix agent endpoint on port 10050.",
+    ["host", "role", "target"],
+    registry=registry,
+)
+
 zabbix_native_agent_data_age_seconds = Gauge(
     "zabbix_native_agent_data_age_seconds",
     "Age in seconds of the latest Zabbix agent.ping value. -1 means no data.",
@@ -231,7 +239,9 @@ ZABBIX_STATE = {
     "summary": {
         "healthy": 0,
         "warning": 0,
-        "risk_down": 7,
+        "risk_down": 0,
+        "unreachable": 0,
+        "unknown": 7,
         "registered": 0,
         "active": 0,
         "deactivated": 0,
@@ -430,6 +440,13 @@ def safe_prometheus_value(prom_url: str, query: str, timeout: int) -> Optional[f
     try:
         return instant_value(prometheus_query(prom_url, query, timeout))
     except Exception:
+        return None
+
+
+def finite_or_none(value: Any) -> Optional[float]:
+    try:
+        return float(value) if value is not None else None
+    except (TypeError, ValueError):
         return None
 
 
@@ -769,6 +786,15 @@ def _zabbix_api_call(method: str, params: Optional[dict] = None, auth: Optional[
     return body.get("result")
 
 
+def _zabbix_agent_tcp_reachable(target: str, timeout: float = 1.0) -> bool:
+    """Check the current agent endpoint from the same Docker network as Zabbix."""
+    try:
+        with socket.create_connection((target, 10050), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
 def _publish_failed_zabbix_collection(error: str) -> None:
     global ZABBIX_STATE
     zabbix_native_api_up.set(0)
@@ -783,17 +809,19 @@ def _publish_failed_zabbix_collection(error: str) -> None:
         zabbix_native_host_enabled.labels(**labels).set(-1)
         zabbix_native_agent_available.labels(**labels).set(0)
         zabbix_native_agent_ping.labels(**labels).set(0)
+        zabbix_native_agent_reachable.labels(**labels).set(-1)
         zabbix_native_agent_data_age_seconds.labels(**labels).set(-1)
-        zabbix_native_host_health.labels(**labels).set(0)
+        zabbix_native_host_health.labels(**labels).set(-1)
         rows.append(
             {
                 **definition,
-                "state": "RISK / DOWN",
-                "health_level": 0,
+                "state": "UNKNOWN / API OFFLINE",
+                "health_level": -1,
                 "registered": False,
                 "enabled": None,
                 "agent_available": False,
                 "agent_ping": False,
+                "agent_reachable": None,
                 "data_age_seconds": None,
                 "endpoint": definition["target"],
                 "error": f"Zabbix API unavailable: {error}",
@@ -807,7 +835,9 @@ def _publish_failed_zabbix_collection(error: str) -> None:
         "summary": {
             "healthy": 0,
             "warning": 0,
-            "risk_down": 7,
+            "risk_down": 0,
+            "unreachable": 0,
+            "unknown": 7,
             "registered": 0,
             "active": 0,
             "deactivated": 0,
@@ -863,6 +893,16 @@ def refresh_zabbix_native_state() -> dict:
         ping_by_host = {item.get("hostid"): item for item in items}
         now = int(time.time())
         rows = []
+        with ThreadPoolExecutor(max_workers=len(ZABBIX_DEMO_HOSTS)) as executor:
+            reachable_by_target = dict(
+                zip(
+                    (definition["target"] for definition in ZABBIX_DEMO_HOSTS),
+                    executor.map(
+                        _zabbix_agent_tcp_reachable,
+                        (definition["target"] for definition in ZABBIX_DEMO_HOSTS),
+                    ),
+                )
+            )
 
         for definition in ZABBIX_DEMO_HOSTS:
             labels = {
@@ -880,6 +920,7 @@ def refresh_zabbix_native_state() -> dict:
             data_age: Optional[int] = None
             ping_fresh = False
             ping_ok = False
+            agent_reachable = bool(reachable_by_target.get(definition["target"], False))
 
             if host:
                 interfaces = host.get("interfaces") or []
@@ -909,13 +950,15 @@ def refresh_zabbix_native_state() -> dict:
                 )
 
             if not registered:
-                health_level, state = 0, "NOT REGISTERED"
+                health_level, state = -1, "NOT REGISTERED"
             elif not enabled:
                 health_level, state = 0, "DEACTIVATED"
-            elif availability_value == "2" or str(ping_item.get("state", "0")) == "1":
+            elif not agent_reachable:
                 health_level, state = 0, "RISK / DOWN"
             elif availability_value == "1" and ping_ok:
                 health_level, state = 2, "HEALTHY"
+            elif availability_value == "2" or str(ping_item.get("state", "0")) == "1":
+                health_level, state = 1, "WARNING / ZABBIX CONFIG"
             else:
                 health_level, state = 1, "WARNING / PENDING"
 
@@ -923,6 +966,7 @@ def refresh_zabbix_native_state() -> dict:
             zabbix_native_host_enabled.labels(**labels).set(1 if enabled else (0 if registered else -1))
             zabbix_native_agent_available.labels(**labels).set(1 if availability_value == "1" else 0)
             zabbix_native_agent_ping.labels(**labels).set(1 if ping_ok else 0)
+            zabbix_native_agent_reachable.labels(**labels).set(1 if agent_reachable else 0)
             zabbix_native_agent_data_age_seconds.labels(**labels).set(data_age if data_age is not None else -1)
             zabbix_native_host_health.labels(**labels).set(health_level)
             rows.append(
@@ -934,6 +978,7 @@ def refresh_zabbix_native_state() -> dict:
                     "enabled": enabled,
                     "agent_available": availability_value == "1",
                     "agent_ping": ping_ok,
+                    "agent_reachable": agent_reachable,
                     "data_age_seconds": data_age,
                     "endpoint": endpoint,
                     "error": interface.get("error") or ping_item.get("error") or "",
@@ -947,6 +992,11 @@ def refresh_zabbix_native_state() -> dict:
             "healthy": sum(row["health_level"] == 2 for row in rows),
             "warning": sum(row["health_level"] == 1 for row in rows),
             "risk_down": sum(row["health_level"] == 0 for row in rows),
+            "unreachable": sum(
+                row["registered"] and row["enabled"] and row["agent_reachable"] is False
+                for row in rows
+            ),
+            "unknown": sum(row["health_level"] < 0 for row in rows),
             "registered": sum(row["registered"] for row in rows),
             "active": sum(row["enabled"] for row in rows),
             "deactivated": sum(row["registered"] and not row["enabled"] for row in rows),
@@ -1005,6 +1055,42 @@ def set_zabbix_host_activation(target: str, active: bool) -> dict:
     }
 
 
+def set_all_zabbix_host_activation(active: bool) -> dict:
+    """Enable or disable native Zabbix monitoring for the complete demo fleet."""
+    auth = str(
+        _zabbix_api_call(
+            "user.login",
+            {"username": ZABBIX_ADMIN_USER, "password": ZABBIX_ADMIN_PASSWORD},
+        )
+    )
+    hosts = _zabbix_api_call(
+        "host.get",
+        {
+            "output": ["hostid", "host", "status"],
+            "filter": {"host": [definition["host"] for definition in ZABBIX_DEMO_HOSTS]},
+        },
+        auth,
+    ) or []
+    hosts_by_name = {host.get("host"): host for host in hosts}
+    missing = [definition["host"] for definition in ZABBIX_DEMO_HOSTS if definition["host"] not in hosts_by_name]
+    if missing:
+        raise LookupError(f"The following demo hosts are not registered: {', '.join(missing)}")
+    for definition in ZABBIX_DEMO_HOSTS:
+        _zabbix_api_call(
+            "host.update",
+            {"hostid": hosts_by_name[definition["host"]]["hostid"], "status": 0 if active else 1},
+            auth,
+        )
+    refreshed = refresh_zabbix_native_state()
+    return {
+        "changed": True,
+        "requested_active": active,
+        "changed_targets": [definition["target"] for definition in ZABBIX_DEMO_HOSTS],
+        "summary": refreshed.get("summary", {}),
+        "hosts": refreshed.get("hosts", []),
+    }
+
+
 def zabbix_monitor_loop() -> None:
     while True:
         refresh_zabbix_native_state()
@@ -1045,6 +1131,8 @@ def portal_overview_payload() -> dict:
         "cpu_usage_percent": 'max(100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[2m])) * 100))',
         "memory_usage_percent": "max((1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100)",
         "icmp_latency_seconds": 'max(probe_duration_seconds{job="blackbox-icmp"} and on(job, instance, target) (probe_success{job="blackbox-icmp"} == 1))',
+        "suricata_sensor_health": "max(suricata_sensor_health)",
+        "suricata_alerts_last_window": "max(suricata_alerts_last_window)",
     }
     with ThreadPoolExecutor(max_workers=10) as executor:
         futures = {
@@ -1084,6 +1172,42 @@ def portal_overview_payload() -> dict:
     }
 
     system_degraded = bool(STATE["last_error"]) or (values.get("unavailable_targets") or 0) > 0
+    suricata_status: Dict[str, Any] = {}
+    if values.get("suricata_alerts_last_window") or values.get("suricata_sensor_health") is None:
+        try:
+            status_response = requests.get("http://suricata-exporter:9517/status", timeout=1.0)
+            status_response.raise_for_status()
+            suricata_status = status_response.json()
+        except Exception:
+            suricata_status = {}
+
+    alert_count = finite_or_none(
+        suricata_status.get("alerts_in_window", values.get("suricata_alerts_last_window"))
+    )
+    sensor_value = suricata_status.get("sensor_healthy")
+    if sensor_value is None:
+        sensor_metric = values.get("suricata_sensor_health")
+        sensor_value = None if sensor_metric is None else sensor_metric >= 1
+    zabbix_down = ZABBIX_STATE.get("summary", {}).get("unreachable") if ZABBIX_STATE.get("api_up") else None
+    attack_detected = bool((alert_count or 0) > 0 or attack_simulation_status().get("active"))
+    outage_detected = bool((zabbix_down or 0) > 0)
+    if attack_detected and outage_detected:
+        correlation_state = "ATTACK + SERVER OUTAGE"
+    elif attack_detected:
+        correlation_state = "ATTACK DETECTED"
+    elif outage_detected:
+        correlation_state = "SERVER OUTAGE"
+    elif sensor_value is False or zabbix_down is None:
+        correlation_state = "VISIBILITY DEGRADED"
+    else:
+        correlation_state = "NORMAL"
+    system_degraded = bool(
+        system_degraded
+        or attack_detected
+        or outage_detected
+        or sensor_value is False
+        or not ZABBIX_STATE.get("api_up")
+    )
 
     return {
         "status": "degraded" if system_degraded else "ok",
@@ -1111,6 +1235,16 @@ def portal_overview_payload() -> dict:
         },
         "services": services,
         "zabbix": ZABBIX_STATE,
+        "security": {
+            "sensor_healthy": sensor_value,
+            "alerts_in_window": alert_count,
+            "latest_alert": suricata_status.get("latest_alert") or {},
+            "last_event_age_seconds": suricata_status.get("last_event_age_seconds"),
+            "zabbix_servers_down": zabbix_down,
+            "attack_detected": attack_detected,
+            "outage_detected": outage_detected,
+            "correlation_state": correlation_state,
+        },
         "simulation": attack_simulation_status(),
         "thresholds": threshold_policy(config),
     }
@@ -1159,6 +1293,16 @@ def zabbix_host_activation(target: str, payload: ZabbixHostActivationRequest) ->
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Zabbix activation failed: {exc}") from exc
+
+
+@app.post("/zabbix-hosts/activation")
+def all_zabbix_host_activation(payload: ZabbixHostActivationRequest) -> dict:
+    try:
+        return set_all_zabbix_host_activation(payload.active)
+    except LookupError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Zabbix fleet activation failed: {exc}") from exc
 
 
 @app.get("/portal/overview")

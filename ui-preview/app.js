@@ -157,21 +157,56 @@ function updateSimulation(simulation = {}) {
   });
 }
 
+function updateSecurityCorrelation(security = {}) {
+  const alertCount = finiteNumber(security.alerts_in_window);
+  const downCount = finiteNumber(security.zabbix_servers_down);
+  const latestAlert = security.latest_alert || {};
+  const sensorHealthy = security.sensor_healthy;
+  const correlation = security.correlation_state || "VISIBILITY DEGRADED";
+
+  element("idsSensorState").textContent = sensorHealthy === true ? "Healthy" : sensorHealthy === false ? "Offline" : "Unknown";
+  element("idsSensorReason").textContent = sensorHealthy === true
+    ? "Current Suricata stats are available"
+    : sensorHealthy === false ? "Sensor data is stale or unavailable" : "No sensor decision is available";
+  setCardState("idsSensorCard", sensorHealthy === true ? "normal" : sensorHealthy === false ? "critical" : "neutral");
+
+  element("idsAlertCount").textContent = formatNumber(alertCount);
+  element("idsAlertReason").textContent = latestAlert.signature
+    ? `Latest: ${latestAlert.signature}`
+    : alertCount > 0 ? "Review signatures in the Suricata dashboard" : "No IDS alerts in the rolling window";
+  setCardState("idsAlertsCard", alertCount === null ? "neutral" : alertCount >= 10 ? "critical" : alertCount >= 5 ? "warning" : alertCount > 0 ? "watch" : "normal");
+
+  element("correlationState").textContent = correlation;
+  element("correlationReason").textContent = downCount === null
+    ? "Zabbix state is unavailable"
+    : `${downCount} Zabbix server${downCount === 1 ? "" : "s"} currently down`;
+  const cardState = correlation === "ATTACK + SERVER OUTAGE" || correlation === "SERVER OUTAGE"
+    ? "critical"
+    : correlation === "ATTACK DETECTED" ? "warning" : correlation === "NORMAL" ? "normal" : "neutral";
+  setCardState("correlationCard", cardState);
+}
+
 function updateZabbixFleet(zabbix = {}) {
   const summary = zabbix.summary || {};
   const hosts = Array.isArray(zabbix.hosts) ? zabbix.hosts : [];
   const healthy = finiteNumber(summary.healthy) ?? 0;
   const warning = finiteNumber(summary.warning) ?? 0;
   const risk = finiteNumber(summary.risk_down) ?? 0;
+  const unknown = finiteNumber(summary.unknown) ?? 0;
   element("zabbixHealthyCount").textContent = `${healthy} / 7`;
   element("zabbixWarningCount").textContent = String(warning);
   element("zabbixRiskCount").textContent = String(risk);
+  element("zabbixUnknownCount").textContent = String(unknown);
   element("zabbixApiState").textContent = zabbix.api_up
     ? `Zabbix API ${zabbix.version || "connected"}`
     : `API unavailable${zabbix.error ? `: ${zabbix.error}` : ""}`;
   setCardState("zabbixHealthyCard", healthy === 7 ? "normal" : healthy >= 5 ? "watch" : "critical");
   setCardState("zabbixWarningCard", warning === 0 ? "normal" : warning === 1 ? "watch" : "warning");
   setCardState("zabbixRiskCard", risk === 0 ? "normal" : risk < 3 ? "warning" : "critical");
+  setCardState("zabbixUnknownCard", unknown === 0 ? "normal" : "neutral");
+  const fleetControlsDisabled = !zabbix.api_up || finiteNumber(summary.registered) !== 7;
+  element("activateAllZabbix").disabled = fleetControlsDisabled;
+  element("deactivateAllZabbix").disabled = fleetControlsDisabled;
 
   const body = element("zabbixFleetBody");
   body.replaceChildren();
@@ -181,7 +216,7 @@ function updateZabbixFleet(zabbix = {}) {
   }
   hosts.forEach((host) => {
     const row = document.createElement("tr");
-    const stateClass = host.health_level === 2 ? "normal" : host.health_level === 1 ? "watch" : "critical";
+    const stateClass = host.health_level === 2 ? "normal" : host.health_level === 1 ? "watch" : host.health_level === 0 ? "critical" : "neutral";
     [host.role, host.host, host.endpoint].forEach((value) => {
       const cell = document.createElement("td");
       cell.textContent = value || "--";
@@ -207,6 +242,28 @@ function updateZabbixFleet(zabbix = {}) {
     row.appendChild(actionCell);
     body.appendChild(row);
   });
+}
+
+async function changeAllZabbixHostActivation(active) {
+  const activateButton = element("activateAllZabbix");
+  const deactivateButton = element("deactivateAllZabbix");
+  activateButton.disabled = true;
+  deactivateButton.disabled = true;
+  try {
+    const response = await fetch(`${apiBase}/zabbix-hosts/activation`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ active })
+    });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.detail || `Zabbix returned HTTP ${response.status}`);
+    showToast(`All seven Zabbix hosts ${active ? "activated" : "deactivated"}`);
+    await refreshOverview(true);
+  } catch (error) {
+    showToast(error.message, true);
+    activateButton.disabled = false;
+    deactivateButton.disabled = false;
+  }
 }
 
 async function changeZabbixHostActivation(button) {
@@ -385,6 +442,7 @@ function updatePortal(data) {
   setConnection(data.status === "ok" ? "healthy" : "degraded", data.status === "ok" ? "Live" : "Degraded");
   updateOperationCards(data);
   updateSimulation(data.simulation);
+  updateSecurityCorrelation(data.security);
   updateZabbixFleet(data.zabbix);
   updateMlCards(data);
   updateMlTable(data.ml?.results || []);
@@ -445,6 +503,8 @@ async function cancelSimulation() {
 setServiceLinks();
 element("refreshButton").addEventListener("click", () => refreshOverview(true));
 element("cancelSimulation").addEventListener("click", cancelSimulation);
+element("activateAllZabbix").addEventListener("click", () => changeAllZabbixHostActivation(true));
+element("deactivateAllZabbix").addEventListener("click", () => changeAllZabbixHostActivation(false));
 document.querySelectorAll("[data-scenario]").forEach((button) => {
   button.addEventListener("click", () => triggerSimulation(button.dataset.scenario));
 });

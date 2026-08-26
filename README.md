@@ -242,7 +242,7 @@ If the stack is already running, use this command after `git pull` or after copy
 bash scripts/apply_dashboard_updates.sh
 ```
 
-This force-recreates the portal and Grafana, verifies that Ubuntu is serving dashboard build `2026.08.26-zabbix-controls-v1`, and then rebuilds the Zabbix activation API. The portal is applied first, so it still becomes visible if a Docker Hub DNS problem prevents the optional API rebuild. A plain `docker compose restart portal` is not sufficient after some imports because it may retain an old Nginx configuration.
+This force-recreates the portal and Grafana, verifies that Ubuntu is serving dashboard build `2026.08.26-zabbix-attack-demo-v2`, and then rebuilds the Zabbix activation API. The portal is applied first, so it still becomes visible if a Docker Hub DNS problem prevents the optional API rebuild. A plain `docker compose restart portal` is not sufficient after some imports because it may retain an old Nginx configuration.
 
 Confirm the deployed version directly:
 
@@ -250,11 +250,14 @@ Confirm the deployed version directly:
 curl -s http://localhost:8088/version | python3 -m json.tool
 ```
 
-The response must contain `"build": "2026.08.26-zabbix-controls-v1"`. The same build label is visible in the top-right corner of the main dashboard. If an old browser tab remains open, refresh it once with `Ctrl+Shift+R`.
+The response must contain `"build": "2026.08.26-zabbix-attack-demo-v2"`. The same **Attack Demo v2** build label is visible in the top-right corner of the main dashboard. If an old browser tab remains open, refresh it once with `Ctrl+Shift+R`.
 
 ### 5. Validate the Running Stack
 
 ```bash
+# Repair stale container addresses, activate all seven hosts, and wait for green
+bash scripts/repair_zabbix_fleet.sh
+
 bash scripts/validate_stack.sh
 
 # Seven native Zabbix host states used by the portal and Grafana
@@ -264,22 +267,28 @@ curl -s "http://localhost:8000/zabbix-health?refresh=true" | python3 -m json.too
 curl -s "http://localhost:9517/status" | python3 -m json.tool
 ```
 
-Expected Zabbix output is `registered: 7`, followed by the core, application, database, security, web, API, and backup servers. A newly activated host may show `WARNING / PENDING` until the next Zabbix `agent.ping`, then changes to `HEALTHY`.
+Expected Zabbix output is `registered: 7`, followed by the core, application, database, security, web, API, and backup servers. A newly activated host may show `WARNING / PENDING` until the next Zabbix `agent.ping`, then changes to `HEALTHY`. `UNKNOWN / API OFFLINE` is grey and is deliberately not counted as a server outage; a confirmed unreachable or deactivated agent is red.
 
 ### 6. Open the Interfaces
 
 | Interface | URL | Purpose |
 |---|---|---|
-| Main portal | [http://localhost:8088](http://localhost:8088) | View all seven servers and use their Activate/Deactivate buttons |
-| Zabbix Grafana dashboard | [http://localhost:3000/d/nhmf-zabbix/zabbix-infrastructure-host-dashboard](http://localhost:3000/d/nhmf-zabbix/zabbix-infrastructure-host-dashboard) | View native health and the **Zabbix Host Activation Timeline** for each server |
+| Main portal | [http://localhost:8088](http://localhost:8088) | View all seven servers, control one or all hosts, and see IDS/server-outage correlation |
+| Zabbix Grafana dashboard | [http://localhost:3000/d/nhmf-zabbix/zabbix-infrastructure-host-dashboard](http://localhost:3000/d/nhmf-zabbix/zabbix-infrastructure-host-dashboard) | View native health, activation history, IDS alerts, signatures, and attack/outage correlation |
 | Native Zabbix Web | [http://localhost:8080](http://localhost:8080) | Inspect the same registered hosts directly in Zabbix (`Admin` / `zabbix`) |
 | Suricata Grafana dashboard | [http://localhost:3000/d/nhmf-suricata/suricata-ids-dashboard](http://localhost:3000/d/nhmf-suricata/suricata-ids-dashboard) | View IDS sensor health, events, flows, and alerts |
 
 ### 7. Demonstrate Server and IDS Impact
 
-The portal buttons activate or deactivate native Zabbix monitoring. For real agent-container outage demonstrations, run:
+First establish a seven-green baseline. The portal buttons then activate or deactivate native Zabbix monitoring for one host or all seven. For real agent-container outages and combined IDS evidence, run:
 
 ```bash
+# Restore, register, activate, and verify all seven servers
+bash scripts/repair_zabbix_fleet.sh
+
+# Demonstrate all native monitoring OFF, then automatic recovery ON
+bash scripts/fault_injection/demo_scenarios.sh zabbix-monitoring-toggle 60
+
 # One monitored server outage
 bash scripts/fault_injection/demo_scenarios.sh zabbix-application-outage 210
 
@@ -294,6 +303,9 @@ bash scripts/fault_injection/demo_scenarios.sh suricata-full-outage 150
 
 # Populate all Suricata IDS views and verify processed alerts
 bash scripts/fault_injection/demo_scenarios.sh suricata-threats-all
+
+# Show ATTACK + SERVER OUTAGE on the main and Zabbix dashboards
+bash scripts/fault_injection/demo_scenarios.sh attack-and-server-outage 90
 ```
 
 Each outage command automatically restores the affected service and prints before, active-outage, final-outage, and recovery evidence.
@@ -384,8 +396,12 @@ After Zabbix Web becomes ready, the startup script uses the host Python runtime 
 # Auto-register / link host with Linux Agent template
 ./scripts/setup_zabbix.sh setup-host --host-name "NHMF-Docker-Host"
 
-# Reconcile all seven bundled demonstration hosts and Docker DNS interfaces
+# Reconcile all seven demonstration hosts with their current container addresses
 ./scripts/setup_zabbix.sh setup-demo-hosts
+
+# Activate or deactivate native monitoring for all seven hosts
+./scripts/setup_zabbix.sh activate-demo-hosts
+./scripts/setup_zabbix.sh deactivate-demo-hosts
 
 # Display native agent availability and agent.ping state for all seven servers
 ./scripts/setup_zabbix.sh status
@@ -402,7 +418,7 @@ After Zabbix Web becomes ready, the startup script uses the host Python runtime 
 - **Readable native data supplied to Grafana:** [http://localhost:8000/zabbix-health](http://localhost:8000/zabbix-health)
 - **Suricata sensor/exporter response:** [http://localhost:9517/status](http://localhost:9517/status)
 
-The main portal at `http://localhost:8088` includes an Activate/Deactivate button for every bundled Zabbix lab host. These controls enable or disable that host's native Zabbix monitoring state; they do not destroy the container or power off the Ubuntu VM. The portal refreshes immediately, and Grafana records both the activation state and resulting health impact on its 15-second refresh cycle. The control API accepts only the seven fixed `ZABBIX_DEMO_HOSTS` targets.
+The main portal at `http://localhost:8088` includes Activate/Deactivate controls for every bundled Zabbix lab host plus **Activate all monitoring** and **Deactivate all monitoring**. These controls change native Zabbix monitoring state; they do not destroy the container or power off the Ubuntu VM. Actual container outage scenarios remain separate. The portal refreshes immediately, and Grafana records activation, current TCP reachability, native `agent.ping` health, Suricata alerts, and attack/outage correlation on its 15-second refresh cycle. The control API accepts only the seven fixed `ZABBIX_DEMO_HOSTS` targets.
 
 ---
 

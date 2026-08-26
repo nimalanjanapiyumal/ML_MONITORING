@@ -10,6 +10,7 @@ The demonstration suite provides repeatable evidence for healthy, watch, warning
 | Watch | Yellow | Early degradation is visible and should be observed. |
 | Warning | Orange | The validated warning boundary has been crossed. |
 | Risk / Critical | Red | The service is unavailable or the critical boundary has been crossed. |
+| Unknown | Grey | The monitoring API cannot currently make a server-health decision; this is not presented as a confirmed outage. |
 
 The shared numeric boundaries are:
 
@@ -17,7 +18,7 @@ The shared numeric boundaries are:
 - ICMP/HTTP latency: green below 150 ms, yellow from 150 ms, orange from 200 ms, red from 500 ms.
 - ML anomaly score: green below 0.50, yellow from 0.50, orange from 0.65, red from 0.85.
 - General availability: `1` is healthy/green and `0` is risk/red.
-- Native Zabbix host health: `2` is healthy/green, `1` is warning or pending/yellow, and `0` is risk/down/red.
+- Native Zabbix host health: `2` is healthy/green, `1` is reachable but warning/pending/yellow, `0` is confirmed risk/down or deactivated/red, and `-1` is unknown/API-offline/grey.
 
 ## Scenario matrix
 
@@ -29,6 +30,8 @@ Use at least 150 seconds for Prometheus alerts with a two-minute persistence per
 
 | Scenario | Command | Expected evidence |
 |---|---|---|
+| Restore seven-green baseline | `./scripts/fault_injection/demo_scenarios.sh zabbix-fleet-online` | Starts all Zabbix components and agents, reconciles their current container addresses, activates all seven hosts, and waits for native health to reach 7/7 green. |
+| Toggle all monitoring off/on | `./scripts/fault_injection/demo_scenarios.sh zabbix-monitoring-toggle 60` | All activation rows change to red/deactivated, then the recovery trap reactivates all seven and the timeline returns to green. |
 | Suricata sensor outage | `./scripts/fault_injection/demo_scenarios.sh suricata-sensor-outage 90` | Sensor freshness becomes `0`, Sensor Health turns red, and `SuricataSensorDown` fires. The exporter remains scrapeable, proving sensor and exporter health are evaluated separately. |
 | Suricata exporter outage | `./scripts/fault_injection/demo_scenarios.sh suricata-exporter-outage 150` | Prometheus scrape status becomes `0`, Sensor Health turns red, and `SuricataExporterDown` fires. |
 | Complete Suricata outage | `./scripts/fault_injection/demo_scenarios.sh suricata-full-outage 150` | Both sensor and exporter dashboard health turn red, demonstrating complete IDS visibility loss. Both containers are restored automatically. |
@@ -51,13 +54,14 @@ Use at least 150 seconds for Prometheus alerts with a two-minute persistence per
 | Cleartext Basic Auth | `./scripts/fault_injection/demo_scenarios.sh suricata-http` | Demo SID 9000008 appears in alert and HTTP views. |
 | C2 port probe | `./scripts/fault_injection/demo_scenarios.sh suricata-c2` | Critical demo SID 9000006 appears and the critical-alert indicator turns red. |
 | All IDS views | `./scripts/fault_injection/demo_scenarios.sh suricata-threats-all` | More than 50 alerts cross the red risk boundary and DNS, TLS, SSH, flow, HTTP, and anomaly panels receive data. |
+| Combined attack and server outage | `./scripts/fault_injection/demo_scenarios.sh attack-and-server-outage 90` | Suricata signatures remain visible while the Application Server agent is stopped; both the main portal and Zabbix dashboard report `ATTACK + SERVER OUTAGE`. |
 | CPU saturation | `./scripts/fault_injection/demo_scenarios.sh cpu 90` | CPU crosses yellow/orange/red boundaries according to observed utilization. |
 | Memory pressure | `./scripts/fault_injection/demo_scenarios.sh memory 90` | Memory crosses yellow/orange/red boundaries according to observed utilization. |
 | Latency and loss | `sudo ./scripts/fault_injection/demo_scenarios.sh latency 90 eth0` | ICMP latency crosses the 200 ms warning boundary or probe availability degrades. |
 
 ## Demonstration procedure
 
-1. Start the stack and run `./scripts/validate_stack.sh` until all checks are healthy.
+1. Start the stack, run `./scripts/repair_zabbix_fleet.sh` to establish the seven-green baseline, and then run `./scripts/validate_stack.sh`.
 2. Open the relevant Grafana dashboard and select a 15-minute time range.
 3. Run one scenario from the matrix. Keep outage scenarios active long enough to satisfy the alert `for` duration.
 4. Use the runner's before/during/after output as direct evidence; it reports the same native Zabbix or Suricata state consumed by Grafana.

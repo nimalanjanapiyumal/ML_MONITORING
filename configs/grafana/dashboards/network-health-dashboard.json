@@ -1915,6 +1915,72 @@
       ],
       "title": "Target Status",
       "type": "table"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 53 },
+      "id": 28,
+      "panels": [],
+      "title": "Security and Zabbix Availability Correlation",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [{ "options": { "0": { "color": "red", "text": "OFFLINE" }, "1": { "color": "green", "text": "HEALTHY" } }, "type": "value" }],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 5, "x": 0, "y": 54 },
+      "id": 29,
+      "options": { "colorMode": "background", "graphMode": "area", "justifyMode": "auto", "orientation": "horizontal", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
+      "targets": [{ "expr": "max(suricata_sensor_health) or vector(0)", "legendFormat": "Suricata sensor", "refId": "A" }],
+      "title": "Suricata IDS Sensor",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "min": 0, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "orange", "value": 5 }, { "color": "red", "value": 10 }] }, "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 6, "w": 5, "x": 5, "y": 54 },
+      "id": 30,
+      "options": { "colorMode": "background", "graphMode": "area", "justifyMode": "auto", "orientation": "horizontal", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
+      "targets": [{ "expr": "max(suricata_alerts_last_window) or vector(0)", "legendFormat": "IDS alerts", "refId": "A" }],
+      "title": "IDS Alerts (Last Hour)",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "max": 7, "min": 0, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "orange", "value": 2 }, { "color": "red", "value": 3 }] }, "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 6, "w": 5, "x": 10, "y": 54 },
+      "id": 31,
+      "options": { "colorMode": "background", "graphMode": "area", "justifyMode": "auto", "orientation": "horizontal", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
+      "targets": [{ "expr": "count(zabbix_native_host_health == 0) or vector(0)", "legendFormat": "Unavailable / 7", "refId": "A" }],
+      "title": "Unavailable Zabbix Servers",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Non-zero means an IDS alert is present while at least one Zabbix demo server is down or deactivated.",
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "mappings": [{ "options": { "0": { "color": "green", "text": "NO COMBINED INCIDENT" } }, "type": "value" }], "min": 0, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 0.000001 }] }, "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 6, "w": 9, "x": 15, "y": 54 },
+      "id": 32,
+      "options": { "colorMode": "background", "graphMode": "area", "justifyMode": "auto", "orientation": "horizontal", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
+      "targets": [{ "expr": "(max(suricata_alerts_last_window) or vector(0)) * scalar(count((zabbix_native_agent_reachable == 0) and on(host, role, target) (zabbix_native_host_enabled == 1)))", "legendFormat": "Alert × unreachable servers", "refId": "A" }],
+      "title": "Attack and Server-Outage Correlation",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 60 },
+      "id": 33,
+      "options": { "cellHeight": "sm", "footer": { "countRows": false, "fields": "", "reducer": ["sum"], "show": false }, "showHeader": true },
+      "targets": [{ "expr": "sum by(signature, category, severity) (increase(suricata_alerts_total[1h]))", "format": "table", "instant": true, "legendFormat": "{{signature}}", "refId": "A" }],
+      "title": "Latest Suricata Attack Signatures",
+      "type": "table"
     }
   ],
   "refresh": "10s",
@@ -2004,6 +2070,6 @@
   "timezone": "browser",
   "title": "Network Health Monitoring - Hybrid Operations Dashboard",
   "uid": "nhmf-main",
-  "version": 3,
+  "version": 4,
   "weekStart": ""
 }

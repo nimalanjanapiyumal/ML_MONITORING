@@ -300,6 +300,10 @@ h3 {
   grid-template-columns: repeat(6, minmax(0, 1fr));
 }
 
+.security-summary-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .metric-card,
 .panel {
   border: 1px solid var(--line);
@@ -501,8 +505,15 @@ select {
 }
 
 .zabbix-summary-grid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   margin-bottom: 18px;
+}
+
+.server-control-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .zabbix-workspace {
@@ -818,7 +829,9 @@ td {
 
 @media (max-width: 1180px) {
   .overview-grid,
-  .ml-metric-grid {
+  .ml-metric-grid,
+  .security-summary-grid,
+  .zabbix-summary-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
@@ -865,6 +878,7 @@ td {
 
   .overview-grid,
   .ml-metric-grid,
+  .security-summary-grid,
   .zabbix-summary-grid,
   .service-grid,
   .simulation-options,

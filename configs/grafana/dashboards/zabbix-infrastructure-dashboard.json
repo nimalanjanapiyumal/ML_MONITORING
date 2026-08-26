@@ -782,12 +782,13 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "description": "Native Zabbix API health for the seven registered server hosts. This uses Zabbix interface availability plus a fresh agent.ping item, rather than a separate TCP-only result.",
+      "description": "Combined native Zabbix state and immediate agent TCP reachability. -1 is unknown/API offline, 0 is down or intentionally deactivated, 1 is reachable but pending/config-degraded, and 2 is fully healthy.",
       "fieldConfig": {
         "defaults": {
           "mappings": [
             {
               "options": {
+                "-1": { "color": "gray", "text": "UNKNOWN / API OFFLINE" },
                 "0": { "color": "red", "text": "RISK / DOWN" },
                 "1": { "color": "yellow", "text": "WARNING / PENDING" },
                 "2": { "color": "green", "text": "HEALTHY" }
@@ -807,7 +808,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 16, "x": 0, "y": 32 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 32 },
       "id": 14,
       "options": {
         "alignValue": "left",
@@ -878,7 +879,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 4, "x": 16, "y": 32 },
+      "gridPos": { "h": 8, "w": 4, "x": 12, "y": 32 },
       "id": 15,
       "options": {
         "colorMode": "background",
@@ -919,7 +920,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 4, "x": 20, "y": 32 },
+      "gridPos": { "h": 8, "w": 4, "x": 16, "y": 32 },
       "id": 16,
       "options": {
         "colorMode": "background",
@@ -937,6 +938,34 @@
         }
       ],
       "title": "Unavailable Zabbix Servers",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Hosts whose state cannot be decided because the Zabbix API is unavailable or the host is not registered. Unknown is deliberately separate from offline.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "max": 7,
+          "min": 0,
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "gray", "value": 1 }] },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 4, "x": 20, "y": 32 },
+      "id": 18,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "horizontal",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [{ "expr": "count(zabbix_native_host_health < 0) or vector(0)", "legendFormat": "Unknown / 7", "refId": "A" }],
+      "title": "Unknown Zabbix Servers",
       "type": "stat"
     },
     {
@@ -986,6 +1015,79 @@
       ],
       "title": "Zabbix Host Activation Timeline",
       "type": "state-timeline"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 48 },
+      "id": 105,
+      "panels": [],
+      "title": "Security Event and Server-Outage Correlation",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [{ "options": { "0": { "color": "red", "text": "OFFLINE" }, "1": { "color": "green", "text": "HEALTHY" } }, "type": "value" }],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 49 },
+      "id": 19,
+      "options": { "colorMode": "background", "graphMode": "area", "justifyMode": "auto", "orientation": "horizontal", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
+      "targets": [{ "expr": "max(suricata_sensor_health) or vector(0)", "legendFormat": "Suricata sensor", "refId": "A" }],
+      "title": "Suricata IDS Sensor",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "min": 0,
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "orange", "value": 5 }, { "color": "red", "value": 10 }] },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 49 },
+      "id": 20,
+      "options": { "colorMode": "background", "graphMode": "area", "justifyMode": "auto", "orientation": "horizontal", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
+      "targets": [{ "expr": "max(suricata_alerts_last_window) or vector(0)", "legendFormat": "IDS alerts", "refId": "A" }],
+      "title": "IDS Alerts (Last Hour)",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Non-zero means Suricata detected an attack while one or more Zabbix demo servers are down or deactivated.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [{ "options": { "0": { "color": "green", "text": "NO COMBINED INCIDENT" } }, "type": "value" }],
+          "min": 0,
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 0.000001 }] },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 49 },
+      "id": 21,
+      "options": { "colorMode": "background", "graphMode": "area", "justifyMode": "auto", "orientation": "horizontal", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
+      "targets": [{ "expr": "(max(suricata_alerts_last_window) or vector(0)) * scalar(count((zabbix_native_agent_reachable == 0) and on(host, role, target) (zabbix_native_host_enabled == 1)))", "legendFormat": "Alert × unreachable servers", "refId": "A" }],
+      "title": "Attack and Server-Outage Correlation",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 55 },
+      "id": 22,
+      "options": { "cellHeight": "sm", "footer": { "countRows": false, "fields": "", "reducer": ["sum"], "show": false }, "showHeader": true },
+      "targets": [{ "expr": "sum by(signature, category, severity) (increase(suricata_alerts_total[1h]))", "format": "table", "instant": true, "legendFormat": "{{signature}}", "refId": "A" }],
+      "title": "Suricata Attack Signatures Seen During Zabbix Events",
+      "type": "table"
     }
   ],
   "refresh": "15s",
@@ -999,5 +1101,5 @@
   "timezone": "browser",
   "title": "Zabbix Infrastructure & Host Dashboard",
   "uid": "nhmf-zabbix",
-  "version": 3
+  "version": 4
 }
