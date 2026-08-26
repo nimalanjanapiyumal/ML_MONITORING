@@ -34,7 +34,7 @@ The framework operates across 6 integrated functional layers:
                       v                                                                       v
 +-------------------------------------------+                       +-----------------------------------+
 |             Prometheus TSDB               |                       |           Zabbix Stack            |
-|  - Time-Series Telemetry (15-day storage) |                       |  - Server, Web, MySQL, 4 Agents  |
+|  - Time-Series Telemetry (15-day storage) |                       |  - Server, Web, MySQL, 7 Agents  |
 |  - Baseline & Threat Alerting Rules       |                       |  - Enterprise Agent Monitoring    |
 +---+-------------------+---------------+---+                       +-----------------------------------+
     |                   |               |
@@ -71,7 +71,7 @@ The framework operates across 6 integrated functional layers:
 | Service | Port | Endpoint / Health URL | Authentication | Description |
 |---|---|---|---|---|
 | **NHMF Portal** | `8088` | `http://localhost:8088` | None | Single-pane-of-glass operations interface & simulation triggers |
-| **Grafana** | `3000` | `http://localhost:3000` | `admin` / `admin123` | Provisioned dashboards (Main, ML, Suricata IDS) |
+| **Grafana** | `3000` | `http://localhost:3000` | `admin` / `admin123` | Provisioned dashboards (Main, ML, Suricata IDS, Zabbix) |
 | **Prometheus** | `9090` | `http://localhost:9090/-/healthy` | None | TSDB metric aggregation and rule evaluation |
 | **Alertmanager** | `9093` | `http://localhost:9093/-/healthy` | None | Alert routing, grouping, and webhook notifications |
 | **ML Anomaly API** | `8000` | `http://localhost:8000/health` | None | FastAPI anomaly scoring engine & metrics (`/metrics`) |
@@ -105,7 +105,8 @@ The framework operates across 6 integrated functional layers:
 │   │   ├── dashboards/             # Pre-built JSON dashboard layouts
 │   │   │   ├── network-health-dashboard.json
 │   │   │   ├── ml-anomaly-dashboard.json
-│   │   │   └── suricata-ids-dashboard.json
+│   │   │   ├── suricata-ids-dashboard.json
+│   │   │   └── zabbix-infrastructure-dashboard.json
 │   │   └── provisioning/           # Datasource & dashboard providers
 │   ├── prometheus/                 # Prometheus scrape targets & alert rules
 │   │   ├── prometheus.yml
@@ -179,7 +180,24 @@ The framework operates across 6 integrated functional layers:
 
 ## Quick Start Guide (Ubuntu 22.04 / 24.04)
 
-### 1. Install Docker & Docker Compose Plugin
+### 1. Download or Update the GitHub Project
+
+For a new installation:
+
+```bash
+cd /home/user
+git clone https://github.com/nimalanjanapiyumal/ML_MONITORING.git
+cd ML_MONITORING
+```
+
+For an existing installation such as `/home/user/ML_MONITORING`:
+
+```bash
+cd /home/user/ML_MONITORING
+git pull
+```
+
+### 2. Install Docker & Docker Compose Plugin
 
 If Docker is not already installed on your Ubuntu host, run the automated setup script:
 
@@ -190,7 +208,7 @@ chmod +x scripts/install_docker_ubuntu.sh
 
 > **Note:** If prompted, log out and back in (or run `newgrp docker`) to activate non-root Docker execution permissions.
 
-### 2. Launch the Entire Framework
+### 3. Launch the Entire Framework
 
 Launch all monitoring services with a single command:
 
@@ -215,6 +233,63 @@ bash run.sh --skip-train
 # Force retraining of the UNSW-NB15 model bundle
 bash run.sh --retrain
 ```
+
+### 4. Apply Only the Latest Portal and Zabbix Dashboard Changes
+
+If the stack is already running, use these commands after `git pull`:
+
+```bash
+docker compose up -d --build ml-anomaly
+docker compose restart grafana portal
+```
+
+Rebuilding `ml-anomaly` applies the protected Zabbix activation API. Restarting Grafana and the portal loads the updated server controls and dashboard definition.
+
+### 5. Validate the Running Stack
+
+```bash
+bash scripts/validate_stack.sh
+
+# Seven native Zabbix host states used by the portal and Grafana
+curl -s "http://localhost:8000/zabbix-health?refresh=true" | python3 -m json.tool
+
+# Suricata exporter, sensor, EVE file, event, and alert status
+curl -s "http://localhost:9517/status" | python3 -m json.tool
+```
+
+Expected Zabbix output is `registered: 7`, followed by the core, application, database, security, web, API, and backup servers. A newly activated host may show `WARNING / PENDING` until the next Zabbix `agent.ping`, then changes to `HEALTHY`.
+
+### 6. Open the Interfaces
+
+| Interface | URL | Purpose |
+|---|---|---|
+| Main portal | [http://localhost:8088](http://localhost:8088) | View all seven servers and use their Activate/Deactivate buttons |
+| Zabbix Grafana dashboard | [http://localhost:3000/d/nhmf-zabbix/zabbix-infrastructure-host-dashboard](http://localhost:3000/d/nhmf-zabbix/zabbix-infrastructure-host-dashboard) | View native health and the **Zabbix Host Activation Timeline** for each server |
+| Native Zabbix Web | [http://localhost:8080](http://localhost:8080) | Inspect the same registered hosts directly in Zabbix (`Admin` / `zabbix`) |
+| Suricata Grafana dashboard | [http://localhost:3000/d/nhmf-suricata/suricata-ids-dashboard](http://localhost:3000/d/nhmf-suricata/suricata-ids-dashboard) | View IDS sensor health, events, flows, and alerts |
+
+### 7. Demonstrate Server and IDS Impact
+
+The portal buttons activate or deactivate native Zabbix monitoring. For real agent-container outage demonstrations, run:
+
+```bash
+# One monitored server outage
+bash scripts/fault_injection/demo_scenarios.sh zabbix-application-outage 210
+
+# Three-server degradation
+bash scripts/fault_injection/demo_scenarios.sh zabbix-multi-server-outage 210
+
+# All seven monitored servers unavailable
+bash scripts/fault_injection/demo_scenarios.sh zabbix-fleet-outage 210
+
+# Suricata sensor and exporter outage
+bash scripts/fault_injection/demo_scenarios.sh suricata-full-outage 150
+
+# Populate all Suricata IDS views and verify processed alerts
+bash scripts/fault_injection/demo_scenarios.sh suricata-threats-all
+```
+
+Each outage command automatically restores the affected service and prints before, active-outage, final-outage, and recovery evidence.
 
 ---
 
