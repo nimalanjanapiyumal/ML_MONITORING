@@ -82,6 +82,29 @@ def test_zabbix_demo_servers_are_deployed_and_probed():
     } <= tcp_targets
 
 
+def test_portal_update_is_cache_safe_and_deployment_is_verifiable():
+    compose = load_yaml("docker-compose.yml")
+    portal = compose["services"]["portal"]
+    volumes = portal["volumes"]
+    assert "./configs/portal/nginx.conf:/etc/nginx/conf.d/default.conf:ro" in volumes
+    assert portal["healthcheck"]["test"][-1] == "http://localhost/health"
+
+    build_id = "2026.08.26-zabbix-controls-v1"
+    nginx_source = (PROJECT_ROOT / "configs" / "portal" / "nginx.conf").read_text(encoding="utf-8")
+    portal_html = (PROJECT_ROOT / "ui-preview" / "index.html").read_text(encoding="utf-8")
+    update_source = (PROJECT_ROOT / "scripts" / "apply_dashboard_updates.sh").read_text(encoding="utf-8")
+    start_source = (PROJECT_ROOT / "scripts" / "start_stack.sh").read_text(encoding="utf-8")
+
+    assert "no-store, no-cache" in nginx_source
+    assert "location = /version" in nginx_source
+    assert build_id in nginx_source
+    assert build_id in portal_html
+    assert "Dashboard build: Zabbix Controls v1" in portal_html
+    assert "--force-recreate --no-deps portal grafana" in update_source
+    assert build_id in update_source
+    assert "verify_portal_build" in start_source
+
+
 def test_health_counts_use_real_probe_results_and_count_failed_targets():
     dashboard = load_json("configs/grafana/dashboards/network-health-dashboard.json")
     healthy_query = panel_by_title(dashboard, "Healthy Targets")["targets"][0]["expr"]

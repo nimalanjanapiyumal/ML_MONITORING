@@ -13,6 +13,8 @@ if (-not $env:COMPOSE_PROJECT_NAME) {
     $env:COMPOSE_PROJECT_NAME = "nhmf"
 }
 
+$PortalBuildId = "2026.08.26-zabbix-controls-v1"
+
 function Require-Command {
     param([string]$Name)
 
@@ -142,6 +144,10 @@ Ensure-UnswModel
 Write-Host "Starting Network Health Monitoring Framework..."
 docker compose up -d --build
 
+# Recreate the static portal so Nginx reloads the current mounted files and
+# recreate Grafana so its provisioned dashboards match the imported project.
+docker compose up -d --force-recreate --no-deps portal grafana
+
 Write-Host ""
 docker compose ps
 
@@ -149,10 +155,20 @@ Write-Host ""
 Test-Url -Name "Prometheus" -Url "http://localhost:9090/-/healthy" -TimeoutSeconds 60 -ServiceName "prometheus"
 Test-Url -Name "Grafana" -Url "http://localhost:3000/api/health" -TimeoutSeconds 120 -ServiceName "grafana"
 Test-Url -Name "ML anomaly API" -Url "http://localhost:8000/health" -TimeoutSeconds 90 -ServiceName "ml-anomaly"
-Test-Url -Name "Operations Portal" -Url "http://localhost:8088" -TimeoutSeconds 90 -ServiceName "portal"
+Test-Url -Name "Operations Portal" -Url "http://localhost:8088/health" -TimeoutSeconds 90 -ServiceName "portal"
 Test-Url -Name "Zabbix Web" -Url "http://localhost:8080" -TimeoutSeconds 180 -ServiceName "zabbix-web"
 Test-Url -Name "Suricata Exporter" -Url "http://localhost:9517/-/healthy" -TimeoutSeconds 60 -ServiceName "suricata-exporter"
 Test-Url -Name "Suricata Sensor Data" -Url "http://localhost:9517/health" -TimeoutSeconds 60 -ServiceName "suricata"
+
+try {
+    $portalVersion = Invoke-RestMethod -Uri "http://localhost:8088/version" -TimeoutSec 10
+    if ($portalVersion.build -ne $PortalBuildId) {
+        throw "Expected $PortalBuildId but received $($portalVersion.build)"
+    }
+    Write-Host "Operations Portal build: $PortalBuildId [OK]"
+} catch {
+    throw "Operations Portal is not serving the current dashboard build. On Ubuntu run: bash scripts/apply_dashboard_updates.sh. $($_.Exception.Message)"
+}
 
 Write-Host ""
 Write-Host "Reloading Prometheus targets and alert rules..."

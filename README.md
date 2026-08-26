@@ -236,14 +236,21 @@ bash run.sh --retrain
 
 ### 4. Apply Only the Latest Portal and Zabbix Dashboard Changes
 
-If the stack is already running, use these commands after `git pull`:
+If the stack is already running, use this command after `git pull` or after copying/importing the project to Ubuntu:
 
 ```bash
-docker compose up -d --build ml-anomaly
-docker compose restart grafana portal
+bash scripts/apply_dashboard_updates.sh
 ```
 
-Rebuilding `ml-anomaly` applies the protected Zabbix activation API. Restarting Grafana and the portal loads the updated server controls and dashboard definition.
+This force-recreates the portal and Grafana, verifies that Ubuntu is serving dashboard build `2026.08.26-zabbix-controls-v1`, and then rebuilds the Zabbix activation API. The portal is applied first, so it still becomes visible if a Docker Hub DNS problem prevents the optional API rebuild. A plain `docker compose restart portal` is not sufficient after some imports because it may retain an old Nginx configuration.
+
+Confirm the deployed version directly:
+
+```bash
+curl -s http://localhost:8088/version | python3 -m json.tool
+```
+
+The response must contain `"build": "2026.08.26-zabbix-controls-v1"`. The same build label is visible in the top-right corner of the main dashboard. If an old browser tab remains open, refresh it once with `Ctrl+Shift+R`.
 
 ### 5. Validate the Running Stack
 

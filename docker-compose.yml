@@ -124,6 +124,7 @@ services:
     image: nginx:1.27-alpine
     restart: unless-stopped
     volumes:
+      - ./configs/portal/nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - ./ui-preview/index.html:/usr/share/nginx/html/index.html:ro
       - ./ui-preview/app.js:/usr/share/nginx/html/app.js:ro
       - ./ui-preview/styles.css:/usr/share/nginx/html/styles.css:ro
@@ -133,6 +134,12 @@ services:
     depends_on:
       - grafana
       - ml-anomaly
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
     networks:
       - monitoring
 

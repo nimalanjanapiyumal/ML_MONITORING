@@ -6,6 +6,8 @@ cd "$PROJECT_ROOT"
 
 export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-nhmf}"
 
+PORTAL_BUILD_ID="2026.08.26-zabbix-controls-v1"
+
 RETRAIN="${NHMF_RETRAIN:-0}"
 SKIP_TRAIN="${NHMF_SKIP_TRAIN:-0}"
 CLEANUP_LEGACY="${NHMF_CLEANUP_LEGACY:-1}"
@@ -192,6 +194,26 @@ check_url() {
   echo " OK"
 }
 
+verify_portal_build() {
+  if ! command -v curl >/dev/null 2>&1; then
+    echo "Operations Portal build: skipped because curl is not installed."
+    return
+  fi
+
+  local payload
+  payload="$(curl -fsS "http://localhost:8088/version" 2>/dev/null || true)"
+  if grep -Fq "\"build\":\"${PORTAL_BUILD_ID}\"" <<<"$payload"; then
+    echo "Operations Portal build: ${PORTAL_BUILD_ID} [OK]"
+    return
+  fi
+
+  echo "[ERROR] Operations Portal is serving an old or incomplete dashboard build." >&2
+  echo "        Expected: ${PORTAL_BUILD_ID}" >&2
+  echo "        Received: ${payload:-no response}" >&2
+  echo "        Re-apply with: bash scripts/apply_dashboard_updates.sh" >&2
+  return 1
+}
+
 require_command docker
 docker compose version >/dev/null
 ensure_docker_daemon
@@ -204,6 +226,11 @@ ensure_unsw_model
 echo "Starting Network Health Monitoring Framework..."
 docker compose up -d --build
 
+# Bind-mounted portal files can change without Docker detecting a new image.
+# Recreating these services guarantees that Nginx reloads its cache policy and
+# Grafana reprovisions the current dashboard definitions after an import/pull.
+docker compose up -d --force-recreate --no-deps portal grafana
+
 echo ""
 docker compose ps
 
@@ -211,7 +238,8 @@ echo ""
 check_url "Prometheus" "http://localhost:9090/-/healthy" 60 "prometheus"
 check_url "Grafana" "http://localhost:3000/api/health" 120 "grafana"
 check_url "ML anomaly API" "http://localhost:8000/health" 90 "ml-anomaly"
-check_url "Operations Portal" "http://localhost:8088" 90 "portal"
+check_url "Operations Portal" "http://localhost:8088/health" 90 "portal"
+verify_portal_build
 check_url "Zabbix Web" "http://localhost:8080" 180 "zabbix-web"
 check_url "Suricata Exporter" "http://localhost:9517/-/healthy" 60 "suricata-exporter"
 check_url "Suricata Sensor Data" "http://localhost:9517/health" 60 "suricata"

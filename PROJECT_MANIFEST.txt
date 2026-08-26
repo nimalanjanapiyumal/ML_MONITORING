@@ -16,6 +16,7 @@ configs/grafana/dashboards/suricata-ids-dashboard.json
 configs/grafana/dashboards/zabbix-infrastructure-dashboard.json
 configs/grafana/provisioning/dashboards/dashboards.yml
 configs/grafana/provisioning/datasources/datasources.yml
+configs/portal/nginx.conf
 configs/prometheus/alert_rules.yml
 configs/prometheus/prometheus.yml
 configs/snmp/snmp-targets-example.yml
@@ -43,6 +44,7 @@ ml-anomaly/requirements.txt
 ml-anomaly/train_unsw_nb15.py
 ml-anomaly/unsw_nb15_pipeline.py
 
+scripts/apply_dashboard_updates.sh
 scripts/export_evidence.sh
 scripts/fault_injection/cpu_stress.sh
 scripts/fault_injection/demo_scenarios.sh

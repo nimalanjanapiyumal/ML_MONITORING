@@ -166,6 +166,14 @@ h3 {
   font-size: 0.72rem;
 }
 
+.portal-build {
+  color: var(--cyan);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .service-nav {
   position: sticky;
   z-index: 20;

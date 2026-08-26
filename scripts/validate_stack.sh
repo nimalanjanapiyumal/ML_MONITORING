@@ -16,6 +16,7 @@ fi
 
 GRAFANA_ADMIN_USER="${GRAFANA_ADMIN_USER:-admin}"
 GRAFANA_ADMIN_PASSWORD="${GRAFANA_ADMIN_PASSWORD:-admin123}"
+PORTAL_BUILD_ID="2026.08.26-zabbix-controls-v1"
 
 GREEN='\033[0;32m'
 RED='\033[0;31m'
@@ -46,12 +47,20 @@ check_url "Prometheus"            "http://localhost:9090/-/healthy"
 check_url "Alertmanager"          "http://localhost:9093/-/healthy"
 check_url "Grafana"               "http://localhost:3000/api/health"
 check_url "ML Anomaly API"        "http://localhost:8000/health"
-check_url "Operations Portal"     "http://localhost:8088"
+check_url "Operations Portal"     "http://localhost:8088/health"
 check_url "Suricata Exporter"     "http://localhost:9517/-/healthy"
 check_url "Suricata Sensor"       "http://localhost:9517/health"
 check_url "Suricata Status Data"  "http://localhost:9517/status"
 check_url "Zabbix Web"            "http://localhost:8080"
 check_url "Native Zabbix Data"    "http://localhost:8000/zabbix-health"
+
+printf "  %-30s " "Operations Portal Build"
+portal_version="$(curl -fsS "http://localhost:8088/version" 2>/dev/null || true)"
+if grep -Fq "\"build\":\"${PORTAL_BUILD_ID}\"" <<<"$portal_version"; then
+  echo -e "${GREEN}[OK]${NC} (${PORTAL_BUILD_ID})"
+else
+  echo -e "${RED}[FAILED]${NC} expected ${PORTAL_BUILD_ID}; received ${portal_version:-no response}"
+fi
 
 echo ""
 echo "[3] Grafana Dashboards Provisioned:"
