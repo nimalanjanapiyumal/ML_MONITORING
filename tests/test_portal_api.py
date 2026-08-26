@@ -162,7 +162,7 @@ def test_native_zabbix_collection_publishes_all_server_health(monkeypatch):
     assert state["summary"]["warning"] == 1
     assert state["hosts"][2]["state"] == "WARNING / ZABBIX CONFIG"
 
-    monkeypatch.setattr(app, "_zabbix_agent_tcp_reachable", lambda target: target != "zabbix-agent-database")
+    monkeypatch.setattr(app, "_zabbix_agent_tcp_reachable", lambda ip: ip != "172.30.0.22")
     state = app.refresh_zabbix_native_state()
     assert state["summary"]["risk_down"] == 1
     assert state["summary"]["unreachable"] == 1

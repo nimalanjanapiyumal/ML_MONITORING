@@ -21,13 +21,48 @@ DEFAULT_PASSWORD = os.getenv("ZABBIX_ADMIN_PASSWORD", "zabbix")
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 DEMO_HOSTS = (
-    {"hostname": "Zabbix server", "dns": "zabbix-agent", "role": "Core monitoring server"},
-    {"hostname": "NHMF Application Server", "dns": "zabbix-agent-application", "role": "Application tier"},
-    {"hostname": "NHMF Database Server", "dns": "zabbix-agent-database", "role": "Database tier"},
-    {"hostname": "NHMF Security Server", "dns": "zabbix-agent-security", "role": "Suricata/security tier"},
-    {"hostname": "NHMF Web Server", "dns": "zabbix-agent-web", "role": "Web/frontend tier"},
-    {"hostname": "NHMF API Server", "dns": "zabbix-agent-api", "role": "API/service tier"},
-    {"hostname": "NHMF Backup Server", "dns": "zabbix-agent-backup", "role": "Backup/recovery tier"},
+    {
+        "hostname": "Zabbix server",
+        "dns": "zabbix-agent",
+        "ip": os.getenv("ZABBIX_AGENT_CORE_IP", "172.30.0.20"),
+        "role": "Core monitoring server",
+    },
+    {
+        "hostname": "NHMF Application Server",
+        "dns": "zabbix-agent-application",
+        "ip": os.getenv("ZABBIX_AGENT_APPLICATION_IP", "172.30.0.21"),
+        "role": "Application tier",
+    },
+    {
+        "hostname": "NHMF Database Server",
+        "dns": "zabbix-agent-database",
+        "ip": os.getenv("ZABBIX_AGENT_DATABASE_IP", "172.30.0.22"),
+        "role": "Database tier",
+    },
+    {
+        "hostname": "NHMF Security Server",
+        "dns": "zabbix-agent-security",
+        "ip": os.getenv("ZABBIX_AGENT_SECURITY_IP", "172.30.0.23"),
+        "role": "Suricata/security tier",
+    },
+    {
+        "hostname": "NHMF Web Server",
+        "dns": "zabbix-agent-web",
+        "ip": os.getenv("ZABBIX_AGENT_WEB_IP", "172.30.0.24"),
+        "role": "Web/frontend tier",
+    },
+    {
+        "hostname": "NHMF API Server",
+        "dns": "zabbix-agent-api",
+        "ip": os.getenv("ZABBIX_AGENT_API_IP", "172.30.0.25"),
+        "role": "API/service tier",
+    },
+    {
+        "hostname": "NHMF Backup Server",
+        "dns": "zabbix-agent-backup",
+        "ip": os.getenv("ZABBIX_AGENT_BACKUP_IP", "172.30.0.26"),
+        "role": "Backup/recovery tier",
+    },
 )
 DEMO_GROUP_NAME = "NHMF Monitored Servers"
 
@@ -56,7 +91,13 @@ def resolve_compose_service_ip(service_name: str) -> str | None:
         )
         containers = json.loads(inspect_result.stdout)
         networks = containers[0].get("NetworkSettings", {}).get("Networks", {}) if containers else {}
-        for network in networks.values():
+        ordered_networks = sorted(
+            networks.items(),
+            key=lambda item: (
+                0 if item[0] == "zabbix-private" or item[0].endswith("_zabbix-private") else 1
+            ),
+        )
+        for _network_name, network in ordered_networks:
             ip_address = network.get("IPAddress", "")
             if ip_address:
                 return ip_address
@@ -435,7 +476,8 @@ class ZabbixAPI:
     def setup_demo_hosts(self) -> list:
         results = []
         for host in DEMO_HOSTS:
-            ip_address = resolve_compose_service_ip(host["dns"])
+            runtime_ip = resolve_compose_service_ip(host["dns"])
+            ip_address = runtime_ip or host["ip"]
             result = None
             last_error = None
             for attempt in range(3):
@@ -454,10 +496,10 @@ class ZabbixAPI:
                     "ip": ip_address,
                     "message": str(last_error),
                 }
-            elif not ip_address:
+            elif not runtime_ip:
                 result["warning"] = (
-                    f"Compose service '{host['dns']}' has no running container IP; "
-                    "the interface is using Docker DNS fallback"
+                    f"Compose inspection was unavailable for '{host['dns']}'; "
+                    f"the declared static endpoint {host['ip']} is in use"
                 )
             result["role"] = host["role"]
             results.append(result)

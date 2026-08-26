@@ -13,7 +13,7 @@ if (-not $env:COMPOSE_PROJECT_NAME) {
     $env:COMPOSE_PROJECT_NAME = "nhmf"
 }
 
-$PortalBuildId = "2026.08.26-zabbix-attack-demo-v2"
+$PortalBuildId = "2026.08.26-zabbix-static-agent-v3"
 
 function Require-Command {
     param([string]$Name)

@@ -18,6 +18,7 @@ ZABBIX_SERVICES=(
   zabbix-agent-web
   zabbix-agent-api
   zabbix-agent-backup
+  ml-anomaly
 )
 
 for command_name in docker python3 curl; do
@@ -27,22 +28,11 @@ for command_name in docker python3 curl; do
   fi
 done
 
-echo "[1/4] Starting the Zabbix control plane and all seven monitored servers..."
-docker compose up -d "${ZABBIX_SERVICES[@]}"
-
-# Refresh the passive/active server allow-list resolution inside every agent
-# after a possible Zabbix server container-address change.
-docker compose restart \
-  zabbix-agent \
-  zabbix-agent-application \
-  zabbix-agent-database \
-  zabbix-agent-security \
-  zabbix-agent-web \
-  zabbix-agent-api \
-  zabbix-agent-backup >/dev/null
+echo "[1/4] Recreating Zabbix on its deterministic private network..."
+docker compose up -d --force-recreate "${ZABBIX_SERVICES[@]}"
 sleep 5
 
-echo "[2/4] Reconciling every Zabbix host interface with its current container address..."
+echo "[2/4] Reconciling every native host interface with its fixed agent address..."
 python3 "$PROJECT_ROOT/scripts/zabbix_api_manager.py" --wait-seconds 180 setup-demo-hosts
 
 echo "[3/4] Activating native monitoring for all seven hosts..."

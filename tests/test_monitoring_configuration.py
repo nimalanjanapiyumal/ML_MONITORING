@@ -3,6 +3,7 @@ import importlib.util
 import re
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
 import yaml
 
@@ -49,6 +50,15 @@ def test_zabbix_demo_servers_are_deployed_and_probed():
     assert expected_agents <= services.keys()
     manager = load_module("scripts/zabbix_api_manager.py", "zabbix_fleet_definition_test")
     assert {host["dns"] for host in manager.DEMO_HOSTS} == expected_agents
+    assert {host["ip"] for host in manager.DEMO_HOSTS} == {
+        "172.30.0.20",
+        "172.30.0.21",
+        "172.30.0.22",
+        "172.30.0.23",
+        "172.30.0.24",
+        "172.30.0.25",
+        "172.30.0.26",
+    }
     assert "zabbix-provisioner" not in services
     assert "suricata-demo-generator" not in services
 
@@ -64,9 +74,26 @@ def test_zabbix_demo_servers_are_deployed_and_probed():
     for agent_name in expected_agents:
         environment = services[agent_name]["environment"]
         assert environment["ZBX_PASSIVE_ALLOW"] == "true"
-        assert environment["ZBX_PASSIVESERVERS"] == "zabbix-server"
+        assert environment["ZBX_SERVER_HOST"] == "${ZABBIX_SERVER_STATIC_IP:-172.30.0.11}"
+        assert environment["ZBX_PASSIVESERVERS"] == "${ZABBIX_PASSIVE_ALLOWED:-172.30.0.0/24}"
         assert environment["ZBX_ACTIVE_ALLOW"] == "true"
-        assert environment["ZBX_ACTIVESERVERS"] == "zabbix-server:10051"
+        assert environment["ZBX_ACTIVESERVERS"] == "${ZABBIX_SERVER_STATIC_IP:-172.30.0.11}:10051"
+        assert "zabbix-private" in services[agent_name]["networks"]
+
+    assert compose["networks"]["zabbix-private"]["ipam"]["config"] == [
+        {
+            "subnet": "${NHMF_ZABBIX_SUBNET:-172.30.0.0/24}",
+            "ip_range": "${NHMF_ZABBIX_DYNAMIC_RANGE:-172.30.0.128/25}",
+        }
+    ]
+    assert services["zabbix-server"]["networks"]["zabbix-private"]["ipv4_address"] == (
+        "${ZABBIX_SERVER_STATIC_IP:-172.30.0.11}"
+    )
+    assert services["ml-anomaly"]["environment"]["ZABBIX_URL"] == (
+        "http://${ZABBIX_WEB_STATIC_IP:-172.30.0.12}:8080/api_jsonrpc.php"
+    )
+    assert "zabbix-private" in services["ml-anomaly"]["networks"]
+    assert "./ml-anomaly/app.py:/app/app.py:ro" in services["ml-anomaly"]["volumes"]
 
     prometheus = load_yaml("configs/prometheus/prometheus.yml")
     jobs = {job["job_name"]: job for job in prometheus["scrape_configs"]}
@@ -91,7 +118,7 @@ def test_portal_update_is_cache_safe_and_deployment_is_verifiable():
     assert "./configs/portal/nginx.conf:/etc/nginx/conf.d/default.conf:ro" in volumes
     assert portal["healthcheck"]["test"][-1] == "http://localhost/health"
 
-    build_id = "2026.08.26-zabbix-attack-demo-v2"
+    build_id = "2026.08.26-zabbix-static-agent-v3"
     nginx_source = (PROJECT_ROOT / "configs" / "portal" / "nginx.conf").read_text(encoding="utf-8")
     portal_html = (PROJECT_ROOT / "ui-preview" / "index.html").read_text(encoding="utf-8")
     update_source = (PROJECT_ROOT / "scripts" / "apply_dashboard_updates.sh").read_text(encoding="utf-8")
@@ -102,13 +129,14 @@ def test_portal_update_is_cache_safe_and_deployment_is_verifiable():
     assert "location = /version" in nginx_source
     assert build_id in nginx_source
     assert build_id in portal_html
-    assert "Dashboard build: Attack Demo v2" in portal_html
+    assert "Dashboard build: Zabbix Agent v3" in portal_html
     assert "--force-recreate --no-deps portal grafana" in update_source
     assert build_id in update_source
     assert "verify_portal_build" in start_source
     assert "setup-demo-hosts" in repair_source
     assert "activate-demo-hosts" in repair_source
-    assert "docker compose restart" in repair_source
+    assert "docker compose up -d --force-recreate" in repair_source
+    assert "zabbix-private" in load_yaml("docker-compose.yml")["networks"]
     assert "zabbix-health?refresh=true" in repair_source
 
 
@@ -431,6 +459,32 @@ def test_zabbix_demo_provisioning_continues_after_one_host_error(monkeypatch):
     assert results[0]["status"] == "error"
     assert attempts["Zabbix server"] == 3
     assert {result["status"] for result in results[1:]} == {"created"}
+
+
+def test_zabbix_manager_prefers_the_fixed_private_interface(monkeypatch):
+    manager = load_module("scripts/zabbix_api_manager.py", "zabbix_private_interface_test")
+    responses = iter(
+        (
+            SimpleNamespace(stdout="container-id\n"),
+            SimpleNamespace(
+                stdout=json.dumps(
+                    [
+                        {
+                            "NetworkSettings": {
+                                "Networks": {
+                                    "nhmf_monitoring": {"IPAddress": "172.18.0.7"},
+                                    "nhmf_zabbix-private": {"IPAddress": "172.30.0.22"},
+                                }
+                            }
+                        }
+                    ]
+                )
+            ),
+        )
+    )
+    monkeypatch.setattr(manager.subprocess, "run", lambda *_args, **_kwargs: next(responses))
+
+    assert manager.resolve_compose_service_ip("zabbix-agent-database") == "172.30.0.22"
 
 
 def test_zabbix_native_health_requires_available_interface_and_fresh_agent_ping(monkeypatch):

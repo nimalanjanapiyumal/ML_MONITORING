@@ -156,11 +156,19 @@ services:
       CONFIG_PATH: /app/config.yaml
       UNSW_MODEL_PATH: /app/models/unsw_nb15_model.joblib
       UNSW_DATA_DIR: /Data/UNSW-NB15 dataset/CSV Files/Training and Testing Sets
-      ZABBIX_URL: http://zabbix-web:8080/api_jsonrpc.php
+      ZABBIX_URL: http://${ZABBIX_WEB_STATIC_IP:-172.30.0.12}:8080/api_jsonrpc.php
       ZABBIX_ADMIN_USER: ${ZABBIX_ADMIN_USER:-Admin}
       ZABBIX_ADMIN_PASSWORD: ${ZABBIX_ADMIN_PASSWORD:-zabbix}
       ZABBIX_REFRESH_SECONDS: ${ZABBIX_REFRESH_SECONDS:-15}
+      ZABBIX_AGENT_CORE_IP: ${ZABBIX_AGENT_CORE_IP:-172.30.0.20}
+      ZABBIX_AGENT_APPLICATION_IP: ${ZABBIX_AGENT_APPLICATION_IP:-172.30.0.21}
+      ZABBIX_AGENT_DATABASE_IP: ${ZABBIX_AGENT_DATABASE_IP:-172.30.0.22}
+      ZABBIX_AGENT_SECURITY_IP: ${ZABBIX_AGENT_SECURITY_IP:-172.30.0.23}
+      ZABBIX_AGENT_WEB_IP: ${ZABBIX_AGENT_WEB_IP:-172.30.0.24}
+      ZABBIX_AGENT_API_IP: ${ZABBIX_AGENT_API_IP:-172.30.0.25}
+      ZABBIX_AGENT_BACKUP_IP: ${ZABBIX_AGENT_BACKUP_IP:-172.30.0.26}
     volumes:
+      - ./ml-anomaly/app.py:/app/app.py:ro
       - ./ml-anomaly/config.yaml:/app/config.yaml:ro
       - ./ml-anomaly/models:/app/models
       - ./Data:/Data:ro
@@ -172,6 +180,7 @@ services:
       - blackbox-exporter
     networks:
       - monitoring
+      - zabbix-private
 
   zabbix-db:
     image: mysql:8.0
@@ -194,13 +203,15 @@ services:
     volumes:
       - zabbix-db-data:/var/lib/mysql
     networks:
-      - monitoring
+      monitoring:
+      zabbix-private:
+        ipv4_address: ${ZABBIX_DB_STATIC_IP:-172.30.0.10}
 
   zabbix-server:
     image: zabbix/zabbix-server-mysql:alpine-7.0-latest
     restart: unless-stopped
     environment:
-      DB_SERVER_HOST: zabbix-db
+      DB_SERVER_HOST: ${ZABBIX_DB_STATIC_IP:-172.30.0.10}
       MYSQL_DATABASE: ${ZABBIX_DB_NAME:-zabbix}
       MYSQL_USER: ${ZABBIX_DB_USER:-zabbix}
       MYSQL_PASSWORD: ${ZABBIX_DB_PASSWORD:-zabbix}
@@ -211,15 +222,17 @@ services:
     ports:
       - "10051:10051"
     networks:
-      - monitoring
+      monitoring:
+      zabbix-private:
+        ipv4_address: ${ZABBIX_SERVER_STATIC_IP:-172.30.0.11}
 
   zabbix-web:
     image: zabbix/zabbix-web-nginx-mysql:alpine-7.0-latest
     restart: unless-stopped
     environment:
-      ZBX_SERVER_HOST: zabbix-server
+      ZBX_SERVER_HOST: ${ZABBIX_SERVER_STATIC_IP:-172.30.0.11}
       ZBX_SERVER_PORT: 10051
-      DB_SERVER_HOST: zabbix-db
+      DB_SERVER_HOST: ${ZABBIX_DB_STATIC_IP:-172.30.0.10}
       MYSQL_DATABASE: ${ZABBIX_DB_NAME:-zabbix}
       MYSQL_USER: ${ZABBIX_DB_USER:-zabbix}
       MYSQL_PASSWORD: ${ZABBIX_DB_PASSWORD:-zabbix}
@@ -239,121 +252,137 @@ services:
     ports:
       - "8080:8080"
     networks:
-      - monitoring
+      monitoring:
+      zabbix-private:
+        ipv4_address: ${ZABBIX_WEB_STATIC_IP:-172.30.0.12}
 
   zabbix-agent:
     image: zabbix/zabbix-agent:alpine-7.0-latest
     restart: unless-stopped
     environment:
-      ZBX_SERVER_HOST: zabbix-server
+      ZBX_SERVER_HOST: ${ZABBIX_SERVER_STATIC_IP:-172.30.0.11}
       ZBX_SERVER_PORT: 10051
       ZBX_PASSIVE_ALLOW: "true"
-      ZBX_PASSIVESERVERS: zabbix-server
+      ZBX_PASSIVESERVERS: ${ZABBIX_PASSIVE_ALLOWED:-172.30.0.0/24}
       ZBX_ACTIVE_ALLOW: "true"
-      ZBX_ACTIVESERVERS: zabbix-server:10051
+      ZBX_ACTIVESERVERS: ${ZABBIX_SERVER_STATIC_IP:-172.30.0.11}:10051
       ZBX_HOSTNAME: "Zabbix server"
     ports:
       - "10050:10050"
     depends_on:
       - zabbix-server
     networks:
-      - monitoring
+      monitoring:
+      zabbix-private:
+        ipv4_address: ${ZABBIX_AGENT_CORE_IP:-172.30.0.20}
 
   zabbix-agent-application:
     image: zabbix/zabbix-agent:alpine-7.0-latest
     restart: unless-stopped
     environment:
-      ZBX_SERVER_HOST: zabbix-server
+      ZBX_SERVER_HOST: ${ZABBIX_SERVER_STATIC_IP:-172.30.0.11}
       ZBX_SERVER_PORT: 10051
       ZBX_PASSIVE_ALLOW: "true"
-      ZBX_PASSIVESERVERS: zabbix-server
+      ZBX_PASSIVESERVERS: ${ZABBIX_PASSIVE_ALLOWED:-172.30.0.0/24}
       ZBX_ACTIVE_ALLOW: "true"
-      ZBX_ACTIVESERVERS: zabbix-server:10051
+      ZBX_ACTIVESERVERS: ${ZABBIX_SERVER_STATIC_IP:-172.30.0.11}:10051
       ZBX_HOSTNAME: "NHMF Application Server"
     depends_on:
       - zabbix-server
     networks:
-      - monitoring
+      monitoring:
+      zabbix-private:
+        ipv4_address: ${ZABBIX_AGENT_APPLICATION_IP:-172.30.0.21}
 
   zabbix-agent-database:
     image: zabbix/zabbix-agent:alpine-7.0-latest
     restart: unless-stopped
     environment:
-      ZBX_SERVER_HOST: zabbix-server
+      ZBX_SERVER_HOST: ${ZABBIX_SERVER_STATIC_IP:-172.30.0.11}
       ZBX_SERVER_PORT: 10051
       ZBX_PASSIVE_ALLOW: "true"
-      ZBX_PASSIVESERVERS: zabbix-server
+      ZBX_PASSIVESERVERS: ${ZABBIX_PASSIVE_ALLOWED:-172.30.0.0/24}
       ZBX_ACTIVE_ALLOW: "true"
-      ZBX_ACTIVESERVERS: zabbix-server:10051
+      ZBX_ACTIVESERVERS: ${ZABBIX_SERVER_STATIC_IP:-172.30.0.11}:10051
       ZBX_HOSTNAME: "NHMF Database Server"
     depends_on:
       - zabbix-server
     networks:
-      - monitoring
+      monitoring:
+      zabbix-private:
+        ipv4_address: ${ZABBIX_AGENT_DATABASE_IP:-172.30.0.22}
 
   zabbix-agent-security:
     image: zabbix/zabbix-agent:alpine-7.0-latest
     restart: unless-stopped
     environment:
-      ZBX_SERVER_HOST: zabbix-server
+      ZBX_SERVER_HOST: ${ZABBIX_SERVER_STATIC_IP:-172.30.0.11}
       ZBX_SERVER_PORT: 10051
       ZBX_PASSIVE_ALLOW: "true"
-      ZBX_PASSIVESERVERS: zabbix-server
+      ZBX_PASSIVESERVERS: ${ZABBIX_PASSIVE_ALLOWED:-172.30.0.0/24}
       ZBX_ACTIVE_ALLOW: "true"
-      ZBX_ACTIVESERVERS: zabbix-server:10051
+      ZBX_ACTIVESERVERS: ${ZABBIX_SERVER_STATIC_IP:-172.30.0.11}:10051
       ZBX_HOSTNAME: "NHMF Security Server"
     depends_on:
       - zabbix-server
     networks:
-      - monitoring
+      monitoring:
+      zabbix-private:
+        ipv4_address: ${ZABBIX_AGENT_SECURITY_IP:-172.30.0.23}
 
   zabbix-agent-web:
     image: zabbix/zabbix-agent:alpine-7.0-latest
     restart: unless-stopped
     environment:
-      ZBX_SERVER_HOST: zabbix-server
+      ZBX_SERVER_HOST: ${ZABBIX_SERVER_STATIC_IP:-172.30.0.11}
       ZBX_SERVER_PORT: 10051
       ZBX_PASSIVE_ALLOW: "true"
-      ZBX_PASSIVESERVERS: zabbix-server
+      ZBX_PASSIVESERVERS: ${ZABBIX_PASSIVE_ALLOWED:-172.30.0.0/24}
       ZBX_ACTIVE_ALLOW: "true"
-      ZBX_ACTIVESERVERS: zabbix-server:10051
+      ZBX_ACTIVESERVERS: ${ZABBIX_SERVER_STATIC_IP:-172.30.0.11}:10051
       ZBX_HOSTNAME: "NHMF Web Server"
     depends_on:
       - zabbix-server
     networks:
-      - monitoring
+      monitoring:
+      zabbix-private:
+        ipv4_address: ${ZABBIX_AGENT_WEB_IP:-172.30.0.24}
 
   zabbix-agent-api:
     image: zabbix/zabbix-agent:alpine-7.0-latest
     restart: unless-stopped
     environment:
-      ZBX_SERVER_HOST: zabbix-server
+      ZBX_SERVER_HOST: ${ZABBIX_SERVER_STATIC_IP:-172.30.0.11}
       ZBX_SERVER_PORT: 10051
       ZBX_PASSIVE_ALLOW: "true"
-      ZBX_PASSIVESERVERS: zabbix-server
+      ZBX_PASSIVESERVERS: ${ZABBIX_PASSIVE_ALLOWED:-172.30.0.0/24}
       ZBX_ACTIVE_ALLOW: "true"
-      ZBX_ACTIVESERVERS: zabbix-server:10051
+      ZBX_ACTIVESERVERS: ${ZABBIX_SERVER_STATIC_IP:-172.30.0.11}:10051
       ZBX_HOSTNAME: "NHMF API Server"
     depends_on:
       - zabbix-server
     networks:
-      - monitoring
+      monitoring:
+      zabbix-private:
+        ipv4_address: ${ZABBIX_AGENT_API_IP:-172.30.0.25}
 
   zabbix-agent-backup:
     image: zabbix/zabbix-agent:alpine-7.0-latest
     restart: unless-stopped
     environment:
-      ZBX_SERVER_HOST: zabbix-server
+      ZBX_SERVER_HOST: ${ZABBIX_SERVER_STATIC_IP:-172.30.0.11}
       ZBX_SERVER_PORT: 10051
       ZBX_PASSIVE_ALLOW: "true"
-      ZBX_PASSIVESERVERS: zabbix-server
+      ZBX_PASSIVESERVERS: ${ZABBIX_PASSIVE_ALLOWED:-172.30.0.0/24}
       ZBX_ACTIVE_ALLOW: "true"
-      ZBX_ACTIVESERVERS: zabbix-server:10051
+      ZBX_ACTIVESERVERS: ${ZABBIX_SERVER_STATIC_IP:-172.30.0.11}:10051
       ZBX_HOSTNAME: "NHMF Backup Server"
     depends_on:
       - zabbix-server
     networks:
-      - monitoring
+      monitoring:
+      zabbix-private:
+        ipv4_address: ${ZABBIX_AGENT_BACKUP_IP:-172.30.0.26}
 
 volumes:
   prometheus-data:
@@ -365,3 +394,9 @@ volumes:
 networks:
   monitoring:
     driver: bridge
+  zabbix-private:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: ${NHMF_ZABBIX_SUBNET:-172.30.0.0/24}
+          ip_range: ${NHMF_ZABBIX_DYNAMIC_RANGE:-172.30.0.128/25}

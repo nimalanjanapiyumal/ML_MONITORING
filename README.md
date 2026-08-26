@@ -242,7 +242,7 @@ If the stack is already running, use this command after `git pull` or after copy
 bash scripts/apply_dashboard_updates.sh
 ```
 
-This force-recreates the portal and Grafana, verifies that Ubuntu is serving dashboard build `2026.08.26-zabbix-attack-demo-v2`, and then rebuilds the Zabbix activation API. The portal is applied first, so it still becomes visible if a Docker Hub DNS problem prevents the optional API rebuild. A plain `docker compose restart portal` is not sufficient after some imports because it may retain an old Nginx configuration.
+This force-recreates the portal and Grafana, verifies that Ubuntu is serving dashboard build `2026.08.26-zabbix-static-agent-v3`, rebuilds the control API, and runs the complete native Zabbix repair. The current control code is also mounted into its container, so an already-built image can apply this repair even if Docker Hub DNS is temporarily unavailable. A plain `docker compose restart portal` is not sufficient after some imports because it may retain an old Nginx configuration.
 
 Confirm the deployed version directly:
 
@@ -250,12 +250,12 @@ Confirm the deployed version directly:
 curl -s http://localhost:8088/version | python3 -m json.tool
 ```
 
-The response must contain `"build": "2026.08.26-zabbix-attack-demo-v2"`. The same **Attack Demo v2** build label is visible in the top-right corner of the main dashboard. If an old browser tab remains open, refresh it once with `Ctrl+Shift+R`.
+The response must contain `"build": "2026.08.26-zabbix-static-agent-v3"`. The same **Zabbix Agent v3** build label is visible in the top-right corner of the main dashboard. If an old browser tab remains open, refresh it once with `Ctrl+Shift+R`.
 
 ### 5. Validate the Running Stack
 
 ```bash
-# Repair stale container addresses, activate all seven hosts, and wait for green
+# Recreate the isolated Zabbix network, repair all native interfaces, and wait for green
 bash scripts/repair_zabbix_fleet.sh
 
 bash scripts/validate_stack.sh
@@ -267,7 +267,7 @@ curl -s "http://localhost:8000/zabbix-health?refresh=true" | python3 -m json.too
 curl -s "http://localhost:9517/status" | python3 -m json.tool
 ```
 
-Expected Zabbix output is `registered: 7`, followed by the core, application, database, security, web, API, and backup servers. A newly activated host may show `WARNING / PENDING` until the next Zabbix `agent.ping`, then changes to `HEALTHY`. `UNKNOWN / API OFFLINE` is grey and is deliberately not counted as a server outage; a confirmed unreachable or deactivated agent is red.
+Expected Zabbix output is `registered: 7` and `healthy: 7`, followed by the core, application, database, security, web, API, and backup servers. Their native agent interfaces use `172.30.0.20` through `172.30.0.26` on the isolated `zabbix-private` Docker network, avoiding dependency on container DNS for Zabbix polling. A newly activated host may show `WARNING / PENDING` until the next Zabbix `agent.ping`, then changes to `HEALTHY`. `UNKNOWN / API OFFLINE` is grey and is deliberately not counted as a server outage; a confirmed unreachable or deactivated agent is red.
 
 ### 6. Open the Interfaces
 
@@ -524,6 +524,18 @@ ip route get 8.8.8.8 | awk '{for(i=1;i<=NF;i++) if ($i=="dev") print $(i+1); exi
 
 ### 3. Port Conflicts (e.g., Port 80, 8080, 3000 in use)
 Change the host port mapping in `docker-compose.yml` (e.g., change `"3000:3000"` to `"3001:3000"` for Grafana).
+
+### 4. All Seven Zabbix Hosts Show `RISK / DOWN`
+
+Run the native repair, which recreates the Zabbix services on fixed private endpoints, updates every Zabbix host interface, activates monitoring, and waits for seven healthy agents:
+
+```bash
+bash scripts/repair_zabbix_fleet.sh
+bash scripts/setup_zabbix.sh status
+curl -s "http://localhost:8000/zabbix-health?refresh=true" | python3 -m json.tool
+```
+
+If Docker reports that `172.30.0.0/24` overlaps another local or VPN network, copy the Zabbix network block from `.env.example` into `.env` and change the subnet, allowed CIDR, and all fixed addresses together before rerunning the repair.
 
 ---
 

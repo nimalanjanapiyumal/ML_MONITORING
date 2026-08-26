@@ -34,13 +34,48 @@ ZABBIX_ADMIN_PASSWORD = os.getenv("ZABBIX_ADMIN_PASSWORD", "zabbix")
 ZABBIX_REFRESH_SECONDS = int(os.getenv("ZABBIX_REFRESH_SECONDS", "15"))
 
 ZABBIX_DEMO_HOSTS = (
-    {"host": "Zabbix server", "target": "zabbix-agent", "role": "Core Monitoring Server"},
-    {"host": "NHMF Application Server", "target": "zabbix-agent-application", "role": "Application Server"},
-    {"host": "NHMF Database Server", "target": "zabbix-agent-database", "role": "Database Server"},
-    {"host": "NHMF Security Server", "target": "zabbix-agent-security", "role": "Security Server"},
-    {"host": "NHMF Web Server", "target": "zabbix-agent-web", "role": "Web Server"},
-    {"host": "NHMF API Server", "target": "zabbix-agent-api", "role": "API Server"},
-    {"host": "NHMF Backup Server", "target": "zabbix-agent-backup", "role": "Backup Server"},
+    {
+        "host": "Zabbix server",
+        "target": "zabbix-agent",
+        "ip": os.getenv("ZABBIX_AGENT_CORE_IP", "172.30.0.20"),
+        "role": "Core Monitoring Server",
+    },
+    {
+        "host": "NHMF Application Server",
+        "target": "zabbix-agent-application",
+        "ip": os.getenv("ZABBIX_AGENT_APPLICATION_IP", "172.30.0.21"),
+        "role": "Application Server",
+    },
+    {
+        "host": "NHMF Database Server",
+        "target": "zabbix-agent-database",
+        "ip": os.getenv("ZABBIX_AGENT_DATABASE_IP", "172.30.0.22"),
+        "role": "Database Server",
+    },
+    {
+        "host": "NHMF Security Server",
+        "target": "zabbix-agent-security",
+        "ip": os.getenv("ZABBIX_AGENT_SECURITY_IP", "172.30.0.23"),
+        "role": "Security Server",
+    },
+    {
+        "host": "NHMF Web Server",
+        "target": "zabbix-agent-web",
+        "ip": os.getenv("ZABBIX_AGENT_WEB_IP", "172.30.0.24"),
+        "role": "Web Server",
+    },
+    {
+        "host": "NHMF API Server",
+        "target": "zabbix-agent-api",
+        "ip": os.getenv("ZABBIX_AGENT_API_IP", "172.30.0.25"),
+        "role": "API Server",
+    },
+    {
+        "host": "NHMF Backup Server",
+        "target": "zabbix-agent-backup",
+        "ip": os.getenv("ZABBIX_AGENT_BACKUP_IP", "172.30.0.26"),
+        "role": "Backup Server",
+    },
 )
 
 @asynccontextmanager
@@ -786,10 +821,10 @@ def _zabbix_api_call(method: str, params: Optional[dict] = None, auth: Optional[
     return body.get("result")
 
 
-def _zabbix_agent_tcp_reachable(target: str, timeout: float = 1.0) -> bool:
-    """Check the current agent endpoint from the same Docker network as Zabbix."""
+def _zabbix_agent_tcp_reachable(ip_address: str, timeout: float = 1.0) -> bool:
+    """Check the agent's fixed endpoint from the same Docker network as Zabbix."""
     try:
-        with socket.create_connection((target, 10050), timeout=timeout):
+        with socket.create_connection((ip_address, 10050), timeout=timeout):
             return True
     except OSError:
         return False
@@ -823,7 +858,7 @@ def _publish_failed_zabbix_collection(error: str) -> None:
                 "agent_ping": False,
                 "agent_reachable": None,
                 "data_age_seconds": None,
-                "endpoint": definition["target"],
+                "endpoint": definition["ip"],
                 "error": f"Zabbix API unavailable: {error}",
             }
         )
@@ -899,7 +934,7 @@ def refresh_zabbix_native_state() -> dict:
                     (definition["target"] for definition in ZABBIX_DEMO_HOSTS),
                     executor.map(
                         _zabbix_agent_tcp_reachable,
-                        (definition["target"] for definition in ZABBIX_DEMO_HOSTS),
+                        (definition["ip"] for definition in ZABBIX_DEMO_HOSTS),
                     ),
                 )
             )
@@ -916,7 +951,7 @@ def refresh_zabbix_native_state() -> dict:
             interface: dict = {}
             ping_item: dict = {}
             availability_value = "0"
-            endpoint = definition["target"]
+            endpoint = definition["ip"]
             data_age: Optional[int] = None
             ping_fresh = False
             ping_ok = False
