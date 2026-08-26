@@ -242,7 +242,7 @@ If the stack is already running, use this command after `git pull` or after copy
 bash scripts/apply_dashboard_updates.sh
 ```
 
-This force-recreates the portal and Grafana, verifies that Ubuntu is serving dashboard build `2026.08.26-zabbix-static-agent-v3`, rebuilds the control API, and runs the complete native Zabbix repair. The current control code is also mounted into its container, so an already-built image can apply this repair even if Docker Hub DNS is temporarily unavailable. A plain `docker compose restart portal` is not sufficient after some imports because it may retain an old Nginx configuration.
+This force-recreates the portal and Grafana, verifies that Ubuntu is serving dashboard build `2026.08.26-zabbix-static-agent-v3`, recreates the control API from its existing local image, and runs the complete native Zabbix repair. It does not run `pip install` or contact PyPI. The current control code is mounted into its container, so an already-built image applies the repair even if Docker or Ubuntu DNS is temporarily unavailable. A plain `docker compose restart portal` is not sufficient after some imports because it may retain an old Nginx configuration.
 
 Confirm the deployed version directly:
 

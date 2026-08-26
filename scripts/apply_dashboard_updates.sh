@@ -41,10 +41,10 @@ if ! grep -Fq "\"build\":\"${PORTAL_BUILD_ID}\"" <<<"${payload:-}"; then
   exit 1
 fi
 
-echo "Applying the latest portal control API..."
-if ! docker compose up -d --build ml-anomaly; then
-  echo "[WARN] The new dashboard is deployed, but the control API could not be rebuilt." >&2
-  echo "       This is commonly caused by Docker Hub DNS access. Fix Docker DNS, then rerun this command." >&2
+echo "Applying the latest portal control API without downloading Python packages..."
+if ! docker compose up -d --no-build --force-recreate ml-anomaly; then
+  echo "[WARN] The existing control API image is unavailable." >&2
+  echo "       For a first installation, restore DNS and run: docker compose build ml-anomaly" >&2
 fi
 
 echo "Repairing native Zabbix connectivity and activating all seven hosts..."

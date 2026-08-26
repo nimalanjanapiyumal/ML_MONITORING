@@ -29,7 +29,11 @@ for command_name in docker python3 curl; do
 done
 
 echo "[1/4] Recreating Zabbix on its deterministic private network..."
-docker compose up -d --force-recreate "${ZABBIX_SERVICES[@]}"
+if ! docker compose up -d --no-build --force-recreate "${ZABBIX_SERVICES[@]}"; then
+  echo "[ERROR] A required local image is missing. This repair intentionally does not download packages." >&2
+  echo "        Restore DNS and run the full installer once, then rerun this repair." >&2
+  exit 1
+fi
 sleep 5
 
 echo "[2/4] Reconciling every native host interface with its fixed agent address..."

@@ -131,11 +131,13 @@ def test_portal_update_is_cache_safe_and_deployment_is_verifiable():
     assert build_id in portal_html
     assert "Dashboard build: Zabbix Agent v3" in portal_html
     assert "--force-recreate --no-deps portal grafana" in update_source
+    assert "--no-build --force-recreate ml-anomaly" in update_source
+    assert "docker compose up -d --build ml-anomaly" not in update_source
     assert build_id in update_source
     assert "verify_portal_build" in start_source
     assert "setup-demo-hosts" in repair_source
     assert "activate-demo-hosts" in repair_source
-    assert "docker compose up -d --force-recreate" in repair_source
+    assert "docker compose up -d --no-build --force-recreate" in repair_source
     assert "zabbix-private" in load_yaml("docker-compose.yml")["networks"]
     assert "zabbix-health?refresh=true" in repair_source
 
